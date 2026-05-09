@@ -77,6 +77,7 @@ function App() {
 
   const marketData = marketDataState?.data ?? []
   const dates = useMemo(() => getUniqueDates(marketData), [marketData])
+  const earliestDataDate = dates[0] ?? '확인 불가'
   const latestDataDate = dates.at(-1) ?? '확인 불가'
   const currentDate = dates[selectedDateIndex]
   const currentData = useMemo(
@@ -95,6 +96,16 @@ function App() {
 
   const selectedDatum =
     currentData.find((datum) => datum.id === selectedId) ?? currentData[0]
+  const selectedSectorStocks = useMemo(
+    () =>
+      selectedDatum?.level === 'sector'
+        ? getDataForDate(marketData, selectedDatum.date).filter(
+            (datum) =>
+              datum.level === 'stock' && datum.sector === selectedDatum.sector,
+          )
+        : [],
+    [marketData, selectedDatum],
+  )
 
   const trailData = useMemo(
     () =>
@@ -259,7 +270,9 @@ function App() {
       </header>
 
       <section className="notice">
-        샘플 데이터는 프로토타입용입니다.
+        {marketDataState?.source === 'real-json'
+          ? '데이터 기준: pykrx OHLCV · 주간 거래대금 합계 · 기준 시총 기반 추정 · 대표 종목 집계'
+          : '샘플 데이터 사용 중 · 수치는 실제 시세가 아닌 시각화용 샘플입니다.'}
       </section>
 
       <section className="data-status" aria-label="데이터 상태">
@@ -267,7 +280,8 @@ function App() {
           <span>데이터를 불러오는 중입니다.</span>
         ) : (
           <>
-            <span>데이터 최신 시점: <strong>{latestDataDate}</strong></span>
+            <span>데이터 범위: <strong>{earliestDataDate} ~ {latestDataDate}</strong></span>
+            <span>최신 시점: <strong>{latestDataDate}</strong></span>
             <span>데이터 상태: <strong>{getMarketDataSourceLabel(marketDataState.source)}</strong></span>
             <button
               type="button"
@@ -328,7 +342,7 @@ function App() {
             />
           </div>
           <aside className="side-column">
-            <InfoPanel datum={selectedDatum} />
+            <InfoPanel datum={selectedDatum} compositionStocks={selectedSectorStocks} />
             <LeaderBoard data={currentData} />
           </aside>
         </section>

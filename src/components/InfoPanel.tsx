@@ -4,9 +4,10 @@ import { getBubbleStatus } from '../utils/status'
 
 type InfoPanelProps = {
   datum?: MarketBubbleDatum
+  compositionStocks?: MarketBubbleDatum[]
 }
 
-export function InfoPanel({ datum }: InfoPanelProps) {
+export function InfoPanel({ datum, compositionStocks = [] }: InfoPanelProps) {
   if (!datum) {
     return (
       <section className="info-panel">
@@ -26,6 +27,11 @@ export function InfoPanel({ datum }: InfoPanelProps) {
     ['시가총액', formatKrw(datum.marketCap)],
     ['거래대금', formatKrw(datum.tradingValue)],
   ]
+  const compositionNames = compositionStocks.slice(0, 3).map((stock) => stock.name)
+  const compositionText =
+    compositionStocks.length > 3
+      ? `${compositionNames.join(', ')} 외`
+      : compositionNames.join(', ')
 
   return (
     <section className="info-panel">
@@ -44,10 +50,30 @@ export function InfoPanel({ datum }: InfoPanelProps) {
           <dt>상태 라벨</dt>
           <dd>{getBubbleStatus(datum)}</dd>
         </div>
+        {datum.level === 'sector' ? (
+          <>
+            <div className="info-row">
+              <dt>구성 종목</dt>
+              <dd>{compositionStocks.length}개</dd>
+            </div>
+            {compositionText ? (
+              <div className="info-row">
+                <dt>구성</dt>
+                <dd>{compositionText}</dd>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className="info-row">
+            <dt>데이터 단위</dt>
+            <dd>종목 단위 데이터</dd>
+          </div>
+        )}
       </dl>
       <p className="split-note">
-        왼쪽 반원은 시가총액, 오른쪽 반원은 거래대금의 상대 기여도를
-        나타냅니다.
+        {datum.level === 'sector'
+          ? '대표 종목 기준 집계'
+          : '왼쪽은 시가총액, 오른쪽은 거래대금입니다.'}
       </p>
     </section>
   )

@@ -228,20 +228,16 @@ export function BubbleChart({
         <line className="zero-axis" x1={yAxisX} x2={yAxisX} y1={margin.top} y2={height - margin.bottom} />
 
         <text className="quadrant-label" x={width - 224} y={margin.top + 34}>
-          {chartMetricMode === 'absolute' ? '큰 체급 · 높은 관심' : '주도'}
+          {chartMetricMode === 'absolute' ? '시장 중심' : '주도'}
         </text>
         <text className="quadrant-label" x={width - 248} y={height - 92}>
-          {chartMetricMode === 'absolute'
-            ? '큰 체급 · 조용한 거래'
-            : '조용한 상승'}
+          {chartMetricMode === 'absolute' ? '대형 저회전' : '조용한 상승'}
         </text>
         <text className="quadrant-label" x={margin.left + 28} y={margin.top + 34}>
-          {chartMetricMode === 'absolute'
-            ? '작은 체급 · 거래 집중'
-            : '투매/손바뀜'}
+          {chartMetricMode === 'absolute' ? '거래 집중' : '투매/손바뀜'}
         </text>
         <text className="quadrant-label" x={margin.left + 34} y={height - 92}>
-          {chartMetricMode === 'absolute' ? '작은 체급 · 조용함' : '소외'}
+          {chartMetricMode === 'absolute' ? '주변부' : '소외'}
         </text>
 
         <text className="axis-label" x={width / 2} y={height - 8} textAnchor="middle">
@@ -269,6 +265,16 @@ export function BubbleChart({
               d={trailPath}
               stroke={trailColor}
             />
+            {trailLayout.length > 2 ? (
+              <line
+                className="trail-final-segment"
+                x1={trailLayout[trailLayout.length - 2].x}
+                y1={trailLayout[trailLayout.length - 2].y}
+                x2={trailLayout[trailLayout.length - 1].x}
+                y2={trailLayout[trailLayout.length - 1].y}
+                stroke={trailColor}
+              />
+            ) : null}
             {trailLayout.map((point, index) => (
               <circle
                 key={`${point.datum.date}-${point.datum.id}`}
