@@ -16,12 +16,15 @@ import {
   type MarketBubbleDatum,
 } from './data/sampleMarketData'
 
+type ViewMode = MarketBubbleDatum['level']
+
 function App() {
   const [marketDataState, setMarketDataState] =
     useState<LoadedMarketData | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedDateIndex, setSelectedDateIndex] = useState(0)
   const [selectedSector, setSelectedSector] = useState('전체 보기')
+  const [viewMode, setViewMode] = useState<ViewMode>('sector')
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -34,7 +37,7 @@ function App() {
         }
 
         setMarketDataState(loadedData)
-        setSelectedDateIndex(getUniqueDates(loadedData.data).length - 1)
+        setSelectedDateIndex(Math.max(0, getUniqueDates(loadedData.data).length - 1))
         setSelectedId(null)
       })
       .finally(() => {
@@ -52,9 +55,18 @@ function App() {
   const dates = useMemo(() => getUniqueDates(marketData), [marketData])
   const currentDate = dates[selectedDateIndex]
   const currentData = useMemo(
-    () => (currentDate ? getDataForDate(marketData, currentDate) : []),
-    [currentDate, marketData],
+    () =>
+      currentDate
+        ? getDataForDate(marketData, currentDate).filter(
+            (datum) => datum.level === viewMode,
+          )
+        : [],
+    [currentDate, marketData, viewMode],
   )
+
+  useEffect(() => {
+    setSelectedId(null)
+  }, [viewMode])
 
   const selectedDatum =
     currentData.find((datum) => datum.id === selectedId) ?? currentData[0]
@@ -90,7 +102,7 @@ function App() {
         ) : (
           <>
             <strong>{getMarketDataSourceLabel(marketDataState.source)}</strong>
-            {marketDataState.fallbackNote ? (
+            {marketDataState.source === 'failed' && marketDataState.fallbackNote ? (
               <span>{marketDataState.fallbackNote}</span>
             ) : null}
           </>
@@ -99,9 +111,28 @@ function App() {
 
       {loading || !marketDataState ? (
         <section className="loading-panel">시각화 데이터를 준비하는 중입니다.</section>
+      ) : marketDataState.source === 'failed' ? (
+        <section className="loading-panel">표시할 수 있는 데이터가 없습니다.</section>
       ) : (
         <section className="workbench">
           <div className="chart-column">
+            <section className="view-toggle" aria-label="보기 단위">
+              <span>보기 단위:</span>
+              <button
+                type="button"
+                className={viewMode === 'sector' ? 'active' : ''}
+                onClick={() => setViewMode('sector')}
+              >
+                섹터
+              </button>
+              <button
+                type="button"
+                className={viewMode === 'stock' ? 'active' : ''}
+                onClick={() => setViewMode('stock')}
+              >
+                종목
+              </button>
+            </section>
             <SectorFilter
               sectors={sectors}
               selectedSector={selectedSector}

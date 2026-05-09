@@ -4,7 +4,11 @@ import {
 } from './sampleMarketData'
 import { validateMarketData } from '../utils/validateMarketData'
 
-export type MarketDataSource = 'real-json' | 'sample-json' | 'embedded-sample'
+export type MarketDataSource =
+  | 'real-json'
+  | 'sample-json'
+  | 'embedded-sample'
+  | 'failed'
 
 export type LoadedMarketData = {
   data: MarketBubbleDatum[]
@@ -16,6 +20,7 @@ const sourceLabels: Record<MarketDataSource, string> = {
   'real-json': '실데이터 파일 사용 중',
   'sample-json': '샘플 JSON 사용 중',
   'embedded-sample': '내장 샘플 데이터 사용 중',
+  failed: '데이터 로딩 실패',
 }
 
 export const getMarketDataSourceLabel = (source: MarketDataSource) =>
@@ -42,27 +47,47 @@ const fetchJsonData = async (filename: string) => {
 }
 
 export const loadMarketData = async (): Promise<LoadedMarketData> => {
+  const failures: string[] = []
+
   try {
     const data = await fetchJsonData('market-bubbles.json')
     return { data, source: 'real-json' }
-  } catch (realDataError) {
-    try {
-      const data = await fetchJsonData('market-bubbles.sample.json')
-      return {
-        data,
-        source: 'sample-json',
-        fallbackNote:
-          realDataError instanceof Error
-            ? realDataError.message
-            : '실데이터 파일을 읽지 못했습니다.',
-      }
-    } catch {
-      return {
-        data: sampleMarketData,
-        source: 'embedded-sample',
-        fallbackNote:
-          'JSON 데이터 파일을 읽지 못해 내장 샘플 데이터로 전환했습니다.',
-      }
+  } catch (error) {
+    failures.push(toErrorMessage(error))
+    console.warn('실데이터 JSON을 읽지 못해 다음 데이터 소스로 전환합니다.', error)
+  }
+
+  try {
+    const data = await fetchJsonData('market-bubbles.sample.json')
+    return { data, source: 'sample-json' }
+  } catch (error) {
+    failures.push(toErrorMessage(error))
+    console.warn('샘플 JSON을 읽지 못해 내장 데이터로 전환합니다.', error)
+  }
+
+  const embeddedData = validateMarketData(sampleMarketData)
+
+  if (embeddedData) {
+    return {
+      data: sampleMarketData,
+      source: 'embedded-sample',
     }
   }
+
+  return {
+    data: [],
+    source: 'failed',
+    fallbackNote:
+      failures.length > 0
+        ? '모든 데이터 소스를 읽지 못했습니다. 개발자 콘솔을 확인하세요.'
+        : '데이터를 읽지 못했습니다.',
+  }
+}
+
+const toErrorMessage = (error: unknown) => {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return '알 수 없는 데이터 오류가 발생했습니다.'
 }

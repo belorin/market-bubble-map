@@ -173,6 +173,26 @@ h1 {
   margin-bottom: 12px;
 }
 
+.view-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: #9fb0c4;
+  font-size: 13px;
+}
+
+.view-toggle button {
+  padding: 7px 12px;
+  color: #aebfd3;
+}
+
+.view-toggle button.active {
+  border-color: rgba(102, 209, 158, 0.82);
+  color: #ffffff;
+  background: rgba(31, 106, 74, 0.42);
+}
+
 .sector-filter button {
   padding: 8px 11px;
   color: #aebfd3;
@@ -229,22 +249,40 @@ h1 {
 
 .bubble {
   cursor: pointer;
+  transform-box: fill-box;
+  transform-origin: center;
   transition:
     opacity 180ms ease,
-    transform 220ms ease;
+    transform 560ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .bubble-hit {
   fill: transparent;
 }
 
-.bubble-base {
-  opacity: 0.35;
-}
-
 .bubble-divider {
   stroke: rgba(3, 9, 18, 0.28);
   stroke-width: 1.2;
+}
+
+.bubble-half.left {
+  filter: saturate(0.86) brightness(0.82);
+}
+
+.bubble-half.right {
+  filter: saturate(1.22) brightness(1.12);
+}
+
+.bubble-core.left {
+  filter: saturate(0.95) brightness(0.72);
+}
+
+.bubble-core.right {
+  filter: saturate(1.45) brightness(1.25);
+}
+
+.bubble-highlight {
+  fill: #ffffff;
 }
 
 .bubble-outline {

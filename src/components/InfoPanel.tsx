@@ -18,6 +18,7 @@ export function InfoPanel({ datum }: InfoPanelProps) {
 
   const rows = [
     ['이름', datum.name],
+    ['보기 단위', datum.level === 'sector' ? '섹터' : '종목'],
     ['시장', datum.market],
     ['섹터', datum.sector],
     ['최근 6개월 수익률', formatPercent(datum.return6m)],

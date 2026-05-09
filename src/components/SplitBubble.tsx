@@ -39,21 +39,23 @@ export function SplitBubble({
   onHover,
 }: SplitBubbleProps) {
   const clipId = useId().replaceAll(':', '')
+  const leftClipId = `${clipId}-left`
+  const rightClipId = `${clipId}-right`
   const colors = getRelatedBubbleColors(datum.sector)
   const capScore = Math.sqrt(datum.marketCap / 1_000_000_000_000)
   const tradeScore = Math.sqrt(datum.tradingValue / 10_000_000_000)
   const totalScore = capScore + tradeScore
   const capShare = capScore / totalScore
   const tradeShare = tradeScore / totalScore
-  const leftRadius = radius * (0.72 + capShare * 0.28)
-  const rightRadius = radius * (0.72 + tradeShare * 0.28)
+  const leftCoreRadius = radius * (0.34 + capShare * 0.58)
+  const rightCoreRadius = radius * (0.34 + tradeShare * 0.58)
   const canShowLabel = radius > 24
   const externalLabel = !canShowLabel && radius > 15
 
   return (
     <g
       className={`bubble ${selected ? 'is-selected' : ''} ${faded ? 'is-faded' : ''}`}
-      transform={`translate(${x} ${y})`}
+      style={{ transform: `translate(${x}px, ${y}px)` }}
       onClick={() => onSelect(datum)}
       onMouseEnter={() => onHover(datum, x, y)}
       onMouseMove={() => onHover(datum, x, y)}
@@ -72,20 +74,54 @@ export function SplitBubble({
         <clipPath id={clipId}>
           <circle r={radius} />
         </clipPath>
+        <clipPath id={leftClipId}>
+          <rect x={-radius} y={-radius} width={radius} height={radius * 2} />
+        </clipPath>
+        <clipPath id={rightClipId}>
+          <rect x={0} y={-radius} width={radius} height={radius * 2} />
+        </clipPath>
       </defs>
       <circle className="bubble-hit" r={radius + 6} />
-      <circle className="bubble-base" r={radius} fill={colors.muted} />
       <g clipPath={`url(#${clipId})`}>
         <path
-          d={semicirclePath('left', leftRadius, radius)}
+          className="bubble-half left"
+          d={semicirclePath('left', radius, radius)}
           fill={colors.left}
-          opacity={0.58 + capShare * 0.34}
+          opacity={0.52 + capShare * 0.3}
         />
         <path
-          d={semicirclePath('right', rightRadius, radius)}
+          className="bubble-half right"
+          d={semicirclePath('right', radius, radius)}
           fill={colors.right}
-          opacity={0.63 + tradeShare * 0.34}
+          opacity={0.62 + tradeShare * 0.34}
         />
+        <g clipPath={`url(#${leftClipId})`}>
+          <circle
+            className="bubble-core left"
+            cx={-radius * 0.2}
+            cy={0}
+            r={leftCoreRadius}
+            fill={colors.left}
+            opacity={0.28 + capShare * 0.5}
+          />
+        </g>
+        <g clipPath={`url(#${rightClipId})`}>
+          <circle
+            className="bubble-core right"
+            cx={radius * 0.22}
+            cy={0}
+            r={rightCoreRadius}
+            fill={colors.right}
+            opacity={0.34 + tradeShare * 0.56}
+          />
+          <circle
+            className="bubble-highlight"
+            cx={radius * 0.34}
+            cy={-radius * 0.34}
+            r={Math.max(3, radius * 0.16)}
+            opacity={0.16 + tradeShare * 0.26}
+          />
+        </g>
         <line y1={-radius} y2={radius} className="bubble-divider" />
       </g>
       <circle className="bubble-outline" r={radius} />

@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""Experimental static data generator for Korean Market Bubble Map.
+"""Static real-data generator for Korean Market Bubble Map.
 
-This script does not run during npm build and does not require API keys.
-The first supported mode is --sample-only, which writes synthetic sector-level
-records in the same MarketBubbleDatum JSON format used by the frontend.
+The React app remains fully static. This script writes
+public/data/market-bubbles.json, which the frontend can serve as a static file.
 
-Future work:
-- Use pykrx to collect listed company market capitalization and price history.
-- Optionally use FinanceDataReader for complementary price/index metadata.
-- Aggregate company-level records into the sector map in sector-map.csv.
-- Compute six-month return and six-month trading-value change per sector.
+Data source policy:
+- Prefer pykrx OHLCV queries for Korean market price and trading value data.
+- Do not scrape websites manually.
+- Cache raw per-ticker data under data/cache/market/.
+- Do not run large collections automatically during npm build.
+
+Market cap note:
+In some environments, pykrx market-cap queries return empty data. This first
+generator therefore uses OHLCV as the primary real source and estimates market
+cap as baseMarketCap * currentClose / firstAvailableClose.
 """
 
 from __future__ import annotations
@@ -18,185 +22,494 @@ import argparse
 import csv
 import json
 import math
+import re
+import sys
+import time
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SECTOR_MAP = ROOT / "scripts" / "sector-map.csv"
+DEFAULT_STOCK_MAP = ROOT / "scripts" / "stock-sector-map.csv"
 DEFAULT_OUTPUT = ROOT / "public" / "data" / "market-bubbles.json"
+DEFAULT_CACHE_DIR = ROOT / "data" / "cache" / "market"
 
 
 @dataclass(frozen=True)
-class SectorProfile:
-    id: str
+class StockMapRow:
+    ticker: str
     name: str
     market: str
     sector: str
     base_market_cap: int
-    base_trading_value: int
 
 
-def clamp(value: float, minimum: float, maximum: float) -> float:
-    return min(maximum, max(minimum, value))
+@dataclass(frozen=True)
+class MonthPoint:
+    month: str
+    close: float
+    volume: float
+    trading_value: float
+    market_cap: float
 
 
-def wave(index: int, phase: float, size: float) -> float:
-    return math.sin(index / size + phase)
+def parse_month(value: str) -> date:
+    if not re.fullmatch(r"\d{4}-\d{2}", value):
+        raise argparse.ArgumentTypeError("날짜는 YYYY-MM 형식이어야 합니다.")
+    year, month = value.split("-")
+    return date(int(year), int(month), 1)
 
 
-def month_label(start_year: int, month_index: int) -> str:
-    year = start_year + month_index // 12
+def add_months(value: date, months: int) -> date:
+    month_index = value.year * 12 + value.month - 1 + months
+    year = month_index // 12
     month = month_index % 12 + 1
-    return f"{year}-{month:02d}"
+    return date(year, month, 1)
 
 
-def read_sector_map(path: Path) -> list[SectorProfile]:
-    with path.open("r", encoding="utf-8", newline="") as file:
-        rows = csv.DictReader(file)
-        return [
-            SectorProfile(
-                id=row["id"],
-                name=row["name"],
-                market=row["market"],
-                sector=row["sector"],
-                base_market_cap=int(row["base_market_cap"]),
-                base_trading_value=int(row["base_trading_value"]),
+def month_end(value: date) -> date:
+    return add_months(value, 1) - timedelta(days=1)
+
+
+def month_range(start: date, end: date) -> list[date]:
+    months: list[date] = []
+    cursor = start
+    while cursor <= end:
+        months.append(cursor)
+        cursor = add_months(cursor, 1)
+    return months
+
+
+def yyyymmdd(value: date) -> str:
+    return value.strftime("%Y%m%d")
+
+
+def month_label(value: date) -> str:
+    return value.strftime("%Y-%m")
+
+
+def read_stock_map(path: Path, sectors: set[str] | None, limit: int | None) -> list[StockMapRow]:
+    with path.open("r", encoding="utf-8-sig", newline="") as file:
+        rows = []
+        for row in csv.DictReader(file):
+            if sectors and row["sector"] not in sectors:
+                continue
+            rows.append(
+                StockMapRow(
+                    ticker=row["ticker"].zfill(6),
+                    name=row["name"],
+                    market=row["market"],
+                    sector=row["sector"],
+                    base_market_cap=int(row["baseMarketCap"]),
+                )
             )
-            for row in rows
-        ]
+
+    if limit is not None:
+        rows = rows[:limit]
+
+    return rows
 
 
-def trend_for(sector_id: str, index: int) -> tuple[float, float]:
-    year_progress = index / 12
-    soft_noise = wave(index, len(sector_id) * 0.7, 2.4) * 7
+def normalize_ohlcv(raw: pd.DataFrame) -> pd.DataFrame:
+    pd = get_pandas()
+    if raw.empty:
+        return pd.DataFrame()
 
-    if sector_id == "semiconductor":
-        lift = -14 if index < 25 else 5 if index < 36 else 32 if index < 55 else 24
-        return (
-            lift + soft_noise + wave(index, 0.4, 4.6) * 9,
-            (-8 if index < 25 else 22 if index < 36 else 68)
-            + wave(index, 0.9, 3.4) * 23,
-        )
-    if sector_id == "battery":
-        lift = 38 if index < 34 else 4 if index < 47 else 13
-        return (
-            lift + soft_noise + wave(index, 1.8, 3.9) * 14,
-            (86 if index < 34 else 18 if index < 47 else 34)
-            + wave(index, 2.4, 2.8) * 31,
-        )
-    if sector_id == "shipbuilding":
-        return (
-            -8 + year_progress * 7.5 + soft_noise,
-            4 + year_progress * 16 + wave(index, 1.1, 3.6) * 18,
-        )
-    if sector_id == "defense":
-        return (
-            -3 + year_progress * 6.7 + soft_noise,
-            8 + year_progress * 14 + wave(index, 2.1, 3.2) * 22,
-        )
-    if sector_id == "bio":
-        spike = 64 if index % 17 < 3 else 0
-        return (
-            wave(index, 0.2, 2.3) * 24 + soft_noise - 3,
-            12 + spike + wave(index, 1.3, 1.9) * 35 + soft_noise,
-        )
-    if sector_id == "finance":
-        return (4 + wave(index, 0.7, 5.8) * 8, 3 + wave(index, 1.9, 6.2) * 14)
-    if sector_id == "internet-game":
-        return (
-            (20 if index < 16 else -24 if index < 38 else -6)
-            + wave(index, 2.3, 3.2) * 13,
-            (36 if index < 16 else -22 if index < 38 else 12)
-            + wave(index, 0.6, 2.9) * 21,
-        )
-    if sector_id == "auto":
-        return (
-            (6 if index < 25 else 22 if index < 54 else 12)
-            + wave(index, 1.2, 4.4) * 12,
-            (8 if index < 25 else 42 if index < 54 else 24)
-            + wave(index, 2.2, 4.2) * 18,
-        )
-    if sector_id == "consumer":
-        return (6 + wave(index, 0.1, 5.6) * 9, 4 + wave(index, 1.5, 5.1) * 13)
-    if sector_id == "utility":
-        return (1 + wave(index, 2.8, 6.8) * 6, -2 + wave(index, 0.8, 5.9) * 9)
+    frame = raw.copy()
+    frame.index = pd.to_datetime(frame.index)
 
-    return (0, 0)
+    close_col = first_existing_column(frame, ["종가", "close", "Close"])
+    volume_col = first_existing_column(frame, ["거래량", "volume", "Volume"])
+    trading_value_col = first_existing_column(
+        frame,
+        ["거래대금", "trading_value", "TradingValue", "value"],
+    )
+
+    if close_col is None or volume_col is None:
+        return pd.DataFrame()
+
+    normalized = pd.DataFrame(index=frame.index)
+    normalized["close"] = pd.to_numeric(frame[close_col], errors="coerce")
+    normalized["volume"] = pd.to_numeric(frame[volume_col], errors="coerce")
+
+    if trading_value_col is not None:
+        normalized["tradingValue"] = pd.to_numeric(
+            frame[trading_value_col],
+            errors="coerce",
+        )
+    else:
+        normalized["tradingValue"] = normalized["close"] * normalized["volume"]
+
+    normalized = normalized.dropna(subset=["close", "volume", "tradingValue"])
+    normalized = normalized[normalized["close"] > 0]
+    return normalized.sort_index()
 
 
-def generate_sample_records(profiles: list[SectorProfile]) -> list[dict[str, object]]:
-    records: list[dict[str, object]] = []
-    month_count = 65
+def first_existing_column(frame: pd.DataFrame, names: list[str]) -> str | None:
+    for name in names:
+        if name in frame.columns:
+            return name
+    return None
 
-    for month_index in range(month_count):
-        for sector_index, profile in enumerate(profiles):
-            return_6m, trading_change_6m = trend_for(profile.id, month_index)
-            cap_multiplier = (
-                1
-                + return_6m / 180
-                + wave(month_index, sector_index + 0.4, 7.8) * 0.06
-            )
-            trading_multiplier = (
-                1
-                + trading_change_6m / 130
-                + wave(month_index, sector_index + 1.2, 3.3) * 0.12
-            )
-            records.append(
-                {
-                    "date": month_label(2021, month_index),
-                    "id": profile.id,
-                    "name": profile.name,
-                    "market": profile.market,
-                    "sector": profile.sector,
-                    "marketCap": round(
-                        profile.base_market_cap * clamp(cap_multiplier, 0.55, 1.9)
-                    ),
-                    "tradingValue": round(
-                        profile.base_trading_value
-                        * clamp(trading_multiplier, 0.38, 2.8)
-                    ),
-                    "return6m": round(clamp(return_6m, -55, 78), 1),
-                    "tradingValueChange6m": round(
-                        clamp(trading_change_6m, -58, 155), 1
-                    ),
-                }
-            )
+
+def cache_path(cache_dir: Path, ticker: str, start: date, end: date) -> Path:
+    return cache_dir / f"{ticker}_{yyyymmdd(start)}_{yyyymmdd(end)}_ohlcv.csv"
+
+
+def fetch_ticker_ohlcv(
+    ticker: str,
+    start: date,
+    end: date,
+    cache_dir: Path,
+    sleep_seconds: float,
+) -> pd.DataFrame:
+    cache_file = cache_path(cache_dir, ticker, start, end)
+    if cache_file.exists():
+        print(f"캐시 사용: {ticker}")
+        return normalize_ohlcv(pd.read_csv(cache_file, index_col=0, parse_dates=True))
+
+    print(f"pykrx 요청: {ticker}")
+    try:
+        from pykrx import stock
+    except ImportError as error:
+        raise SystemExit(
+            "pykrx가 설치되어 있지 않습니다. `pip install -r scripts/requirements.txt`를 실행하세요."
+        ) from error
+
+    raw = stock.get_market_ohlcv_by_date(yyyymmdd(start), yyyymmdd(end), ticker)
+    frame = normalize_ohlcv(raw)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(cache_file, encoding="utf-8")
+
+    if sleep_seconds > 0:
+        time.sleep(sleep_seconds)
+
+    return frame
+
+
+def row_for_month(frame: pd.DataFrame, month: date) -> pd.Series | None:
+    pd = get_pandas()
+    available = frame.loc[
+        (frame.index >= pd.Timestamp(month))
+        & (frame.index <= pd.Timestamp(month_end(month)))
+    ]
+    if available.empty:
+        return None
+    return available.iloc[-1]
+
+
+def build_month_point(
+    frame: pd.DataFrame,
+    month: date,
+    base_market_cap: int,
+    first_close: float,
+) -> MonthPoint | None:
+    row = row_for_month(frame, month)
+    if row is None:
+        return None
+
+    close = float(row["close"])
+    volume = float(row["volume"])
+    trading_value = float(row["tradingValue"])
+    market_cap = base_market_cap * close / first_close
+
+    if not all(math.isfinite(value) for value in [close, volume, trading_value, market_cap]):
+        return None
+
+    return MonthPoint(
+        month=month_label(month),
+        close=close,
+        volume=volume,
+        trading_value=trading_value,
+        market_cap=market_cap,
+    )
+
+
+def safe_percent_change(current: float, previous: float) -> float | None:
+    if previous <= 0:
+        return None
+    return (current / previous - 1) * 100
+
+
+def build_stock_records(
+    stock_row: StockMapRow,
+    frame: pd.DataFrame,
+    months: list[date],
+) -> list[dict[str, Any]]:
+    if frame.empty:
+        return []
+
+    first_close = float(frame.iloc[0]["close"])
+    if first_close <= 0:
+        return []
+
+    records: list[dict[str, Any]] = []
+    for current_month in months:
+        current = build_month_point(
+            frame,
+            current_month,
+            stock_row.base_market_cap,
+            first_close,
+        )
+        previous = build_month_point(
+            frame,
+            add_months(current_month, -6),
+            stock_row.base_market_cap,
+            first_close,
+        )
+
+        if current is None or previous is None:
+            continue
+
+        return_6m = safe_percent_change(current.close, previous.close)
+        trading_change_6m = safe_percent_change(
+            current.trading_value,
+            previous.trading_value,
+        )
+
+        if return_6m is None or trading_change_6m is None:
+            continue
+
+        records.append(
+            {
+                "date": current.month,
+                "id": stock_row.ticker,
+                "name": stock_row.name,
+                "market": stock_row.market,
+                "sector": stock_row.sector,
+                "level": "stock",
+                "marketCap": round(current.market_cap),
+                "tradingValue": round(current.trading_value),
+                "return6m": round(return_6m, 1),
+                "tradingValueChange6m": round(trading_change_6m, 1),
+                "_previousTradingValue": previous.trading_value,
+            }
+        )
 
     return records
 
 
+def aggregate_sector_records(stock_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for record in stock_records:
+        grouped.setdefault((record["date"], record["sector"]), []).append(record)
+
+    sector_records: list[dict[str, Any]] = []
+    for (record_date, sector), records in sorted(grouped.items()):
+        market_cap = sum(float(record["marketCap"]) for record in records)
+        trading_value = sum(float(record["tradingValue"]) for record in records)
+        previous_trading_value = sum(
+            float(record.get("_previousTradingValue", 0)) for record in records
+        )
+        kosdaq_count = sum(1 for record in records if record["market"] == "KOSDAQ")
+        market = "KOSDAQ" if kosdaq_count > len(records) / 2 else "KOSPI"
+        weighted_return = weighted_average(records, "return6m", "marketCap")
+
+        if previous_trading_value > 0:
+            trading_change = (trading_value / previous_trading_value - 1) * 100
+        else:
+            trading_change = weighted_average(records, "tradingValueChange6m", "tradingValue")
+
+        sector_records.append(
+            {
+                "date": record_date,
+                "id": sector_slug(sector),
+                "name": sector,
+                "market": market,
+                "sector": sector,
+                "level": "sector",
+                "marketCap": round(market_cap),
+                "tradingValue": round(trading_value),
+                "return6m": round(weighted_return, 1),
+                "tradingValueChange6m": round(trading_change, 1),
+            }
+        )
+
+    return sector_records
+
+
+def weighted_average(records: list[dict[str, Any]], value_key: str, weight_key: str) -> float:
+    total_weight = sum(float(record[weight_key]) for record in records)
+    if total_weight <= 0:
+        return sum(float(record[value_key]) for record in records) / len(records)
+    return sum(float(record[value_key]) * float(record[weight_key]) for record in records) / total_weight
+
+
+def sector_slug(sector: str) -> str:
+    known = {
+        "반도체": "semiconductor",
+        "자동차": "auto",
+        "2차전지": "battery",
+        "바이오": "bio",
+        "금융": "finance",
+        "조선": "shipbuilding",
+        "방산": "defense",
+        "인터넷/게임": "internet-game",
+        "소비재": "consumer",
+        "유틸리티": "utility",
+    }
+    if sector in known:
+        return known[sector]
+    return re.sub(r"[^a-z0-9-]+", "-", sector.lower()).strip("-") or "sector"
+
+
+def validate_record(record: dict[str, Any]) -> bool:
+    return (
+        isinstance(record.get("date"), str)
+        and re.fullmatch(r"\d{4}-\d{2}", record["date"]) is not None
+        and record.get("level") in {"sector", "stock"}
+        and isinstance(record.get("id"), str)
+        and bool(record["id"])
+        and isinstance(record.get("name"), str)
+        and bool(record["name"])
+        and record.get("market") in {"KOSPI", "KOSDAQ"}
+        and isinstance(record.get("sector"), str)
+        and bool(record["sector"])
+        and is_positive_number(record.get("marketCap"))
+        and is_non_negative_number(record.get("tradingValue"))
+        and is_finite_number(record.get("return6m"))
+        and is_finite_number(record.get("tradingValueChange6m"))
+    )
+
+
+def is_finite_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and math.isfinite(value)
+
+
+def is_positive_number(value: Any) -> bool:
+    return is_finite_number(value) and value > 0
+
+
+def is_non_negative_number(value: Any) -> bool:
+    return is_finite_number(value) and value >= 0
+
+
+def get_pandas() -> Any:
+    try:
+        import pandas as pd
+    except ImportError as error:
+        raise SystemExit(
+            "pandas가 설치되어 있지 않습니다. `pip install -r scripts/requirements.txt`를 실행하세요."
+        ) from error
+    return pd
+
+
+def strip_internal_fields(record: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in record.items() if not key.startswith("_")}
+
+
+def write_records(records: list[dict[str, Any]], output: Path) -> None:
+    public_records = [strip_internal_fields(record) for record in records]
+    invalid_count = sum(1 for record in public_records if not validate_record(record))
+    if invalid_count:
+        raise SystemExit(f"생성 데이터 검증 실패: {invalid_count}개 레코드가 올바르지 않습니다.")
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        json.dumps(public_records, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print(f"저장 위치: {output}")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Experimental static JSON generator for the bubble map."
+        description="Korean Market Bubble Map 정적 실데이터 생성기"
     )
+    parser.add_argument("--from", dest="from_month", type=parse_month, default=parse_month("2025-01"))
+    parser.add_argument("--to", dest="to_month", type=parse_month, default=parse_month("2025-06"))
+    parser.add_argument("--limit-tickers", type=int, default=None)
+    parser.add_argument("--sectors", type=str, default=None, help="쉼표로 구분한 섹터 목록")
+    parser.add_argument("--sleep", type=float, default=0.4)
+    parser.add_argument("--stock-map", type=Path, default=DEFAULT_STOCK_MAP)
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR)
     parser.add_argument(
         "--sample-only",
         action="store_true",
-        help="Write synthetic sample records instead of collecting real market data.",
+        help="네트워크 요청 없이 CSV의 기준값으로 작은 형식 확인용 데이터를 생성합니다.",
     )
-    parser.add_argument("--sector-map", type=Path, default=DEFAULT_SECTOR_MAP)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     return parser.parse_args()
+
+
+def generate_sample_only(rows: list[StockMapRow], months: list[date]) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for month_index, current_month in enumerate(months):
+        for row_index, stock_row in enumerate(rows):
+            movement = math.sin(month_index / 2.1 + row_index * 0.6)
+            trading_movement = math.cos(month_index / 1.8 + row_index * 0.4)
+            records.append(
+                {
+                    "date": month_label(current_month),
+                    "id": stock_row.ticker,
+                    "name": stock_row.name,
+                    "market": stock_row.market,
+                    "sector": stock_row.sector,
+                    "level": "stock",
+                    "marketCap": round(stock_row.base_market_cap * (1 + movement * 0.08)),
+                    "tradingValue": round(stock_row.base_market_cap * 0.002 * (1 + trading_movement * 0.25)),
+                    "return6m": round(movement * 18, 1),
+                    "tradingValueChange6m": round(trading_movement * 45, 1),
+                    "_previousTradingValue": stock_row.base_market_cap * 0.002,
+                }
+            )
+    return records
 
 
 def main() -> None:
     args = parse_args()
+    if args.from_month > args.to_month:
+        raise SystemExit("시작 월은 종료 월보다 늦을 수 없습니다.")
 
-    if not args.sample_only:
-        raise SystemExit(
-            "실험 단계입니다. 현재는 --sample-only 모드만 지원합니다."
-        )
-
-    profiles = read_sector_map(args.sector_map)
-    records = generate_sample_records(profiles)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(records, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
+    sector_filter = (
+        {sector.strip() for sector in args.sectors.split(",") if sector.strip()}
+        if args.sectors
+        else None
     )
-    print(f"{len(records)}개 레코드를 {args.output}에 저장했습니다.")
+    rows = read_stock_map(args.stock_map, sector_filter, args.limit_tickers)
+    if not rows:
+        raise SystemExit("읽을 종목이 없습니다. CSV, 섹터 필터, 제한 옵션을 확인하세요.")
+
+    months = month_range(args.from_month, args.to_month)
+    fetch_start = add_months(args.from_month, -7)
+    fetch_end = month_end(args.to_month)
+
+    print(f"{len(rows)}개 종목을 읽는 중")
+
+    if args.sample_only:
+        stock_records = generate_sample_only(rows, months)
+    else:
+        stock_records = []
+        for row in rows:
+            try:
+                frame = fetch_ticker_ohlcv(
+                    row.ticker,
+                    fetch_start,
+                    fetch_end,
+                    args.cache_dir,
+                    args.sleep,
+                )
+                if frame.empty:
+                    print(f"빈 데이터로 건너뜀: {row.ticker} {row.name}")
+                    continue
+                stock_records.extend(build_stock_records(row, frame, months))
+            except Exception as error:
+                print(f"종목 처리 실패: {row.ticker} {row.name} - {error}", file=sys.stderr)
+                continue
+
+    sector_records = aggregate_sector_records(stock_records)
+    all_records = sorted(
+        [*sector_records, *stock_records],
+        key=lambda record: (record["date"], record["level"], record["sector"], record["id"]),
+    )
+
+    if not all_records:
+        raise SystemExit("생성된 레코드가 없습니다. 기간 또는 종목 목록을 확인하세요.")
+
+    print(f"{len(all_records)}개 레코드 생성")
+    write_records(all_records, args.output)
 
 
 if __name__ == "__main__":
