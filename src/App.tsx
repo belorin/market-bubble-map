@@ -33,6 +33,8 @@ function App() {
     useState<AxisScaleMode>('compressed')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [expandedChartOpen, setExpandedChartOpen] = useState(false)
+  const [refreshingData, setRefreshingData] = useState(false)
+  const [refreshMessage, setRefreshMessage] = useState('')
 
   useEffect(() => {
     let active = true
@@ -60,6 +62,7 @@ function App() {
 
   const marketData = marketDataState?.data ?? []
   const dates = useMemo(() => getUniqueDates(marketData), [marketData])
+  const latestDataDate = dates.at(-1) ?? '확인 불가'
   const currentDate = dates[selectedDateIndex]
   const currentData = useMemo(
     () =>
@@ -95,6 +98,30 @@ function App() {
 
   const handleSelectDatum = (datum: MarketBubbleDatum) => {
     setSelectedId(datum.id)
+  }
+
+  const handleRefreshData = async () => {
+    setRefreshingData(true)
+    setRefreshMessage('')
+
+    try {
+      const loadedData = await loadMarketData(String(Date.now()))
+      const nextDates = getUniqueDates(loadedData.data)
+      const currentDateBeforeRefresh = currentDate
+      const preservedDateIndex = currentDateBeforeRefresh
+        ? nextDates.indexOf(currentDateBeforeRefresh)
+        : -1
+      setMarketDataState(loadedData)
+      setSelectedDateIndex(
+        preservedDateIndex >= 0
+          ? preservedDateIndex
+          : Math.max(0, nextDates.length - 1),
+      )
+      setSelectedId(null)
+      setRefreshMessage('현재 배포된 데이터가 다시 로드되었습니다.')
+    } finally {
+      setRefreshingData(false)
+    }
   }
 
   const chartSettings = (
@@ -153,7 +180,19 @@ function App() {
           <span>데이터를 불러오는 중입니다.</span>
         ) : (
           <>
-            <strong>{getMarketDataSourceLabel(marketDataState.source)}</strong>
+            <span>데이터 최신 시점: <strong>{latestDataDate}</strong></span>
+            <span>데이터 상태: <strong>{getMarketDataSourceLabel(marketDataState.source)}</strong></span>
+            <button
+              type="button"
+              onClick={handleRefreshData}
+              disabled={refreshingData}
+            >
+              데이터 새로고침
+            </button>
+            {refreshMessage ? <span>{refreshMessage}</span> : null}
+            {marketDataState.source !== 'real-json' ? (
+              <span>서버 데이터 수집은 SSH에서 실행해야 합니다.</span>
+            ) : null}
             {marketDataState.source === 'failed' && marketDataState.fallbackNote ? (
               <span>{marketDataState.fallbackNote}</span>
             ) : null}

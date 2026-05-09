@@ -61,6 +61,14 @@ def parse_month(value: str) -> date:
     return date(int(year), int(month), 1)
 
 
+def parse_record_date(value: str) -> date:
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return date.fromisoformat(value)
+    if re.fullmatch(r"\d{4}-\d{2}", value):
+        return parse_month(value)
+    raise ValueError(f"지원하지 않는 날짜 형식입니다: {value}")
+
+
 def add_months(value: date, months: int) -> date:
     month_index = value.year * 12 + value.month - 1 + months
     year = month_index // 12
@@ -531,6 +539,62 @@ def strip_internal_fields(record: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in record.items() if not key.startswith("_")}
 
 
+def load_existing_records(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+
+    try:
+        records = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"기존 JSON을 읽지 못했습니다: {error}") from error
+
+    if not isinstance(records, list):
+        raise SystemExit("기존 JSON 형식이 배열이 아닙니다.")
+
+    public_records = [record for record in records if isinstance(record, dict)]
+    invalid_count = sum(1 for record in public_records if not validate_record(record))
+    if invalid_count:
+        raise SystemExit(f"기존 JSON 검증 실패: {invalid_count}개 레코드가 올바르지 않습니다.")
+
+    return public_records
+
+
+def latest_record_date(records: list[dict[str, Any]]) -> date | None:
+    dates: list[date] = []
+    for record in records:
+        try:
+            dates.append(parse_record_date(str(record["date"])))
+        except (KeyError, ValueError):
+            continue
+    return max(dates) if dates else None
+
+
+def merge_records(
+    existing_records: list[dict[str, Any]],
+    new_records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for record in [*existing_records, *new_records]:
+        public_record = strip_internal_fields(record)
+        merged[
+            (
+                str(public_record["date"]),
+                str(public_record["id"]),
+                str(public_record["level"]),
+            )
+        ] = public_record
+
+    return sorted(
+        merged.values(),
+        key=lambda record: (
+            record["date"],
+            record["level"],
+            record["sector"],
+            record["id"],
+        ),
+    )
+
+
 def write_records(records: list[dict[str, Any]], output: Path) -> None:
     public_records = [strip_internal_fields(record) for record in records]
     invalid_count = sum(1 for record in public_records if not validate_record(record))
@@ -550,7 +614,7 @@ def parse_args() -> argparse.Namespace:
         description="Korean Market Bubble Map 정적 실데이터 생성기"
     )
     parser.add_argument("--from", dest="from_month", type=parse_month, default=parse_month("2025-01"))
-    parser.add_argument("--to", dest="to_month", type=parse_month, default=parse_month("2025-06"))
+    parser.add_argument("--to", dest="to_month", type=parse_month, default=None)
     parser.add_argument("--limit-tickers", type=int, default=None)
     parser.add_argument("--sectors", type=str, default=None, help="쉼표로 구분한 섹터 목록")
     parser.add_argument(
@@ -563,6 +627,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stock-map", type=Path, default=DEFAULT_STOCK_MAP)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR)
+    parser.add_argument(
+        "--update-missing",
+        action="store_true",
+        help="기존 JSON 이후 누락된 기간만 수집해 병합합니다.",
+    )
     parser.add_argument(
         "--sample-only",
         action="store_true",
@@ -614,7 +683,27 @@ def generate_sample_only(
 
 def main() -> None:
     args = parse_args()
-    if args.from_month > args.to_month:
+    existing_records = load_existing_records(args.output) if args.update_missing else []
+    latest_existing_date = latest_record_date(existing_records)
+    end_date = (
+        args.to_month
+        if args.to_month is not None
+        else date.today()
+        if args.update_missing
+        else parse_month("2025-06")
+    )
+    start_date = args.from_month
+
+    if args.update_missing and latest_existing_date is not None:
+        if args.frequency == "weekly":
+            start_date = latest_existing_date + timedelta(days=1)
+        else:
+            start_date = add_months(date(latest_existing_date.year, latest_existing_date.month, 1), 1)
+
+    if start_date > end_date:
+        if args.update_missing:
+            print("추가로 수집할 데이터가 없습니다.")
+            return
         raise SystemExit("시작 월은 종료 월보다 늦을 수 없습니다.")
 
     sector_filter = (
@@ -626,15 +715,19 @@ def main() -> None:
     if not rows:
         raise SystemExit("읽을 종목이 없습니다. CSV, 섹터 필터, 제한 옵션을 확인하세요.")
 
-    fetch_start = add_months(args.from_month, -7)
-    fetch_end = month_end(args.to_month)
+    fetch_start = add_months(start_date, -7)
+    fetch_end = (
+        date.today()
+        if args.update_missing and args.to_month is None
+        else month_end(end_date)
+    )
 
     print(f"{len(rows)}개 종목을 읽는 중")
 
     if args.sample_only:
         stock_records = generate_sample_only(
             rows,
-            args.from_month,
+            start_date,
             fetch_end,
             args.frequency,
         )
@@ -657,7 +750,7 @@ def main() -> None:
                         build_weekly_stock_records(
                             row,
                             frame,
-                            args.from_month,
+                            start_date,
                             fetch_end,
                         )
                     )
@@ -666,7 +759,7 @@ def main() -> None:
                         build_monthly_stock_records(
                             row,
                             frame,
-                            month_range(args.from_month, args.to_month),
+                            month_range(start_date, end_date),
                         )
                     )
             except Exception as error:
@@ -674,15 +767,24 @@ def main() -> None:
                 continue
 
     sector_records = aggregate_sector_records(stock_records)
-    all_records = sorted(
+    generated_records = sorted(
         [*sector_records, *stock_records],
         key=lambda record: (record["date"], record["level"], record["sector"], record["id"]),
     )
 
-    if not all_records:
+    if not generated_records:
+        if args.update_missing:
+            print("추가로 수집할 데이터가 없습니다.")
+            return
         raise SystemExit("생성된 레코드가 없습니다. 기간 또는 종목 목록을 확인하세요.")
 
-    print(f"{len(all_records)}개 레코드 생성")
+    all_records = (
+        merge_records(existing_records, generated_records)
+        if args.update_missing
+        else generated_records
+    )
+
+    print(f"{len(generated_records)}개 레코드 생성")
     write_records(all_records, args.output)
 
 

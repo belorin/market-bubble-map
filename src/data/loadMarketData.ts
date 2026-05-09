@@ -26,11 +26,13 @@ const sourceLabels: Record<MarketDataSource, string> = {
 export const getMarketDataSourceLabel = (source: MarketDataSource) =>
   sourceLabels[source]
 
-const buildDataUrl = (filename: string) =>
-  `${import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`}data/${filename}`
+const buildDataUrl = (filename: string, cacheBust?: string) => {
+  const baseUrl = `${import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`}data/${filename}`
+  return cacheBust ? `${baseUrl}?t=${encodeURIComponent(cacheBust)}` : baseUrl
+}
 
-const fetchJsonData = async (filename: string) => {
-  const response = await fetch(buildDataUrl(filename), { cache: 'no-store' })
+const fetchJsonData = async (filename: string, cacheBust?: string) => {
+  const response = await fetch(buildDataUrl(filename, cacheBust), { cache: 'no-store' })
 
   if (!response.ok) {
     throw new Error(`데이터 파일을 찾을 수 없습니다: ${filename}`)
@@ -46,11 +48,11 @@ const fetchJsonData = async (filename: string) => {
   return validated
 }
 
-export const loadMarketData = async (): Promise<LoadedMarketData> => {
+export const loadMarketData = async (cacheBust?: string): Promise<LoadedMarketData> => {
   const failures: string[] = []
 
   try {
-    const data = await fetchJsonData('market-bubbles.json')
+    const data = await fetchJsonData('market-bubbles.json', cacheBust)
     return { data, source: 'real-json' }
   } catch (error) {
     failures.push(toErrorMessage(error))
@@ -58,7 +60,7 @@ export const loadMarketData = async (): Promise<LoadedMarketData> => {
   }
 
   try {
-    const data = await fetchJsonData('market-bubbles.sample.json')
+    const data = await fetchJsonData('market-bubbles.sample.json', cacheBust)
     return { data, source: 'sample-json' }
   } catch (error) {
     failures.push(toErrorMessage(error))

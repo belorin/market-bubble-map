@@ -80,7 +80,23 @@ python scripts/generate_market_bubbles.py --from 2025-01 --to 2025-06 --limit-ti
 python scripts/generate_market_bubbles.py --from 2024-01 --to 2026-05 --frequency weekly
 ```
 
+누락된 주간 데이터만 갱신:
+
+```bash
+. .venv/bin/activate
+python scripts/generate_market_bubbles.py --update-missing --frequency weekly --sleep 0.5
+```
+
+빌드 후 배포:
+
+```bash
+npm run build
+sudo rsync -av --delete dist/ /var/www/html/market-bubble/
+```
+
 생성기는 `scripts/stock-sector-map.csv`를 읽고 `public/data/market-bubbles.json`을 씁니다. 이 파일이 있으면 앱 시작 시 화면에 `실데이터 파일 사용 중`이 표시됩니다.
+
+웹 화면의 `데이터 새로고침` 버튼은 현재 배포된 JSON을 다시 읽기만 합니다. pykrx 수집은 안전을 위해 SSH에서 위 Python 명령으로 실행해야 하며, 브라우저에서 서버 수집을 직접 실행하지 않습니다.
 
 기본 생성 주기는 주간입니다. 주간 데이터는 각 주의 마지막 거래일을 대표 날짜로 사용하며, 날짜는 `YYYY-MM-DD` 형식으로 저장됩니다. 월간 데이터는 `YYYY-MM` 형식으로 저장됩니다. 주간 데이터는 월간 데이터보다 시점이 촘촘해 버블 이동이 더 부드럽게 보입니다.
 
