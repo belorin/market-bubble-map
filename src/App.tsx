@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BubbleChart } from './components/BubbleChart'
+import { ChartSettingToggle } from './components/ChartSettingToggle'
 import { InfoPanel } from './components/InfoPanel'
 import { LeaderBoard } from './components/LeaderBoard'
 import { SectorFilter } from './components/SectorFilter'
@@ -96,6 +97,39 @@ function App() {
     setSelectedId(datum.id)
   }
 
+  const chartSettings = (
+    <section className="chart-settings-row" aria-label="차트 설정">
+      <ChartSettingToggle
+        label="보기 단위"
+        valueLabel={viewMode === 'sector' ? '섹터' : '종목'}
+        onToggle={() =>
+          setViewMode((current) => (current === 'sector' ? 'stock' : 'sector'))
+        }
+        ariaLabel="보기 단위 선택"
+      />
+      <ChartSettingToggle
+        label="자료 기준"
+        valueLabel={chartMetricMode === 'relative' ? '변화율' : '규모'}
+        onToggle={() =>
+          setChartMetricMode((current) =>
+            current === 'relative' ? 'absolute' : 'relative',
+          )
+        }
+        ariaLabel="자료 기준 선택"
+      />
+      <ChartSettingToggle
+        label="축 스케일"
+        valueLabel={axisScaleMode === 'linear' ? '선형' : '압축'}
+        onToggle={() =>
+          setAxisScaleMode((current) =>
+            current === 'linear' ? 'compressed' : 'linear',
+          )
+        }
+        ariaLabel="축 스케일 선택"
+      />
+    </section>
+  )
+
   return (
     <main className="app-shell">
       <header className="app-header">
@@ -134,61 +168,13 @@ function App() {
       ) : (
         <section className="workbench">
           <div className="chart-column">
-            <section className="view-toggle" aria-label="보기 단위">
-              <span>보기 단위:</span>
-              <button
-                type="button"
-                className={viewMode === 'sector' ? 'active' : ''}
-                onClick={() => setViewMode('sector')}
-              >
-                섹터
-              </button>
-              <button
-                type="button"
-                className={viewMode === 'stock' ? 'active' : ''}
-                onClick={() => setViewMode('stock')}
-              >
-                종목
-              </button>
-            </section>
+            {chartSettings}
             <SectorFilter
               sectors={sectors}
               selectedSector={selectedSector}
               onChange={setSelectedSector}
             />
-            <section className="metric-toggle" aria-label="지도 기준">
-              <span>자료 기준:</span>
-              <button
-                type="button"
-                className={chartMetricMode === 'relative' ? 'active' : ''}
-                onClick={() => setChartMetricMode('relative')}
-              >
-                변화율
-              </button>
-              <button
-                type="button"
-                className={chartMetricMode === 'absolute' ? 'active' : ''}
-                onClick={() => setChartMetricMode('absolute')}
-              >
-                규모
-              </button>
-            </section>
-            <section className="scale-toggle" aria-label="축 스케일">
-              <span>축 스케일:</span>
-              <button
-                type="button"
-                className={axisScaleMode === 'linear' ? 'active' : ''}
-                onClick={() => setAxisScaleMode('linear')}
-              >
-                선형
-              </button>
-              <button
-                type="button"
-                className={axisScaleMode === 'compressed' ? 'active' : ''}
-                onClick={() => setAxisScaleMode('compressed')}
-              >
-                압축
-              </button>
+            <section className="chart-action-row" aria-label="차트 작업">
               <button
                 type="button"
                 className="expand-button"
@@ -228,57 +214,7 @@ function App() {
             </button>
           </div>
           <div className="overlay-controls">
-            <section className="view-toggle" aria-label="보기 단위">
-              <span>보기 단위:</span>
-              <button
-                type="button"
-                className={viewMode === 'sector' ? 'active' : ''}
-                onClick={() => setViewMode('sector')}
-              >
-                섹터
-              </button>
-              <button
-                type="button"
-                className={viewMode === 'stock' ? 'active' : ''}
-                onClick={() => setViewMode('stock')}
-              >
-                종목
-              </button>
-            </section>
-            <section className="metric-toggle" aria-label="지도 기준">
-              <span>자료 기준:</span>
-              <button
-                type="button"
-                className={chartMetricMode === 'relative' ? 'active' : ''}
-                onClick={() => setChartMetricMode('relative')}
-              >
-                변화율
-              </button>
-              <button
-                type="button"
-                className={chartMetricMode === 'absolute' ? 'active' : ''}
-                onClick={() => setChartMetricMode('absolute')}
-              >
-                규모
-              </button>
-            </section>
-            <section className="scale-toggle" aria-label="축 스케일">
-              <span>축 스케일:</span>
-              <button
-                type="button"
-                className={axisScaleMode === 'linear' ? 'active' : ''}
-                onClick={() => setAxisScaleMode('linear')}
-              >
-                선형
-              </button>
-              <button
-                type="button"
-                className={axisScaleMode === 'compressed' ? 'active' : ''}
-                onClick={() => setAxisScaleMode('compressed')}
-              >
-                압축
-              </button>
-            </section>
+            {chartSettings}
           </div>
           <BubbleChart
             data={currentData}

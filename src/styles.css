@@ -173,41 +173,47 @@ h1 {
   margin-bottom: 12px;
 }
 
-.view-toggle,
-.metric-toggle,
-.scale-toggle {
+.chart-settings-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.setting-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-color: rgba(157, 181, 214, 0.2);
   color: #9fb0c4;
+  background: rgba(9, 22, 39, 0.72);
   font-size: 13px;
 }
 
-.view-toggle button,
-.metric-toggle button,
-.scale-toggle button {
-  padding: 7px 12px;
-  color: #aebfd3;
+.setting-toggle strong {
+  color: #ffffff;
+  font-size: 13px;
 }
 
-.view-toggle button.active,
-.metric-toggle button.active,
-.scale-toggle button.active {
+.setting-toggle b {
+  color: #70d2ff;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.setting-toggle:hover,
+.setting-toggle:focus-visible {
   border-color: rgba(102, 209, 158, 0.82);
-  color: #ffffff;
   background: rgba(31, 106, 74, 0.42);
 }
 
-.metric-toggle,
-.scale-toggle {
-  flex-wrap: wrap;
-}
-
-.metric-toggle em,
-.scale-toggle em {
-  color: #7f95ac;
-  font-style: normal;
+.chart-action-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
 }
 
 .expand-button {
