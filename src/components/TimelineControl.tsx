@@ -3,7 +3,10 @@ import { useEffect, useState } from 'react'
 type TimelineControlProps = {
   dates: string[]
   selectedIndex: number
+  playing: boolean
+  playbackActive?: boolean
   onChange: (index: number) => void
+  onPlayingChange: (playing: boolean) => void
 }
 
 const playbackSpeeds = {
@@ -17,13 +20,15 @@ type PlaybackSpeed = keyof typeof playbackSpeeds
 export function TimelineControl({
   dates,
   selectedIndex,
+  playing,
+  playbackActive = true,
   onChange,
+  onPlayingChange,
 }: TimelineControlProps) {
-  const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState<PlaybackSpeed>('보통')
 
   useEffect(() => {
-    if (!playing || dates.length === 0) {
+    if (!playing || !playbackActive || dates.length === 0) {
       return
     }
 
@@ -32,7 +37,7 @@ export function TimelineControl({
     }, playbackSpeeds[speed])
 
     return () => window.clearInterval(intervalId)
-  }, [dates.length, onChange, playing, selectedIndex, speed])
+  }, [dates.length, onChange, playbackActive, playing, selectedIndex, speed])
 
   return (
     <section className="timeline-panel" aria-label="시점 재생 컨트롤">
@@ -46,7 +51,7 @@ export function TimelineControl({
         </button>
         <button
           type="button"
-          onClick={() => setPlaying(true)}
+          onClick={() => onPlayingChange(true)}
           disabled={playing}
           aria-label="재생"
         >
@@ -54,7 +59,7 @@ export function TimelineControl({
         </button>
         <button
           type="button"
-          onClick={() => setPlaying(false)}
+          onClick={() => onPlayingChange(false)}
           disabled={!playing}
           aria-label="일시정지"
         >

@@ -210,6 +210,12 @@ h1 {
   background: rgba(31, 106, 74, 0.42);
 }
 
+.keyboard-help {
+  color: #7890aa;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .chart-action-row {
   display: flex;
   justify-content: flex-end;

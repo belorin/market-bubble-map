@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BubbleChart } from './components/BubbleChart'
 import { ChartSettingToggle } from './components/ChartSettingToggle'
 import { InfoPanel } from './components/InfoPanel'
@@ -21,6 +21,17 @@ import { getTrailPoints, type TrailPeriod } from './utils/trails'
 
 type ViewMode = MarketBubbleDatum['level']
 
+const shouldIgnoreShortcut = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  return (
+    target.isContentEditable ||
+    ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+  )
+}
+
 function App() {
   const [marketDataState, setMarketDataState] =
     useState<LoadedMarketData | null>(null)
@@ -38,6 +49,7 @@ function App() {
   const [refreshMessage, setRefreshMessage] = useState('')
   const [trailEnabled, setTrailEnabled] = useState(false)
   const [trailPeriod, setTrailPeriod] = useState<TrailPeriod>('3m')
+  const [playing, setPlaying] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -81,21 +93,6 @@ function App() {
     setSelectedId(null)
   }, [viewMode])
 
-  useEffect(() => {
-    if (!expandedChartOpen) {
-      return
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setExpandedChartOpen(false)
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [expandedChartOpen])
-
   const selectedDatum =
     currentData.find((datum) => datum.id === selectedId) ?? currentData[0]
 
@@ -116,6 +113,64 @@ function App() {
   const handleSelectDatum = (datum: MarketBubbleDatum) => {
     setSelectedId(datum.id)
   }
+
+  const moveToPreviousDate = useCallback(() => {
+    setSelectedDateIndex((current) => Math.max(0, current - 1))
+  }, [])
+
+  const moveToNextDate = useCallback(() => {
+    setSelectedDateIndex((current) =>
+      dates.length > 0 ? (current + 1) % dates.length : current,
+    )
+  }, [dates.length])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (shouldIgnoreShortcut(event.target)) {
+        return
+      }
+
+      if (event.key === 'Escape' && expandedChartOpen) {
+        event.preventDefault()
+        setExpandedChartOpen(false)
+        return
+      }
+
+      if (event.key === ' ' || event.code === 'Space') {
+        event.preventDefault()
+        setPlaying((current) => !current)
+        return
+      }
+
+      if (event.key === 'ArrowUp' && !expandedChartOpen) {
+        event.preventDefault()
+        setExpandedChartOpen(true)
+        return
+      }
+
+      if (event.key === 'ArrowDown' && expandedChartOpen) {
+        event.preventDefault()
+        setExpandedChartOpen(false)
+        return
+      }
+
+      if (event.key === 'ArrowLeft' && dates.length > 0) {
+        event.preventDefault()
+        setPlaying(false)
+        moveToPreviousDate()
+        return
+      }
+
+      if (event.key === 'ArrowRight' && dates.length > 0) {
+        event.preventDefault()
+        setPlaying(false)
+        moveToNextDate()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [dates.length, expandedChartOpen, moveToNextDate, moveToPreviousDate])
 
   const handleRefreshData = async () => {
     setRefreshingData(true)
@@ -185,6 +240,7 @@ function App() {
         }
         ariaLabel="경로 기간 전환"
       />
+      <span className="keyboard-help">키보드: Space 재생/정지 · ↑ 크게 보기 · ↓ 닫기 · ← 이전 시점 · → 다음 시점</span>
     </section>
   )
 
@@ -265,7 +321,10 @@ function App() {
             <TimelineControl
               dates={dates}
               selectedIndex={selectedDateIndex}
+              playing={playing}
+              playbackActive={!expandedChartOpen}
               onChange={setSelectedDateIndex}
+              onPlayingChange={setPlaying}
             />
           </div>
           <aside className="side-column">
@@ -300,7 +359,10 @@ function App() {
           <TimelineControl
             dates={dates}
             selectedIndex={selectedDateIndex}
+            playing={playing}
+            playbackActive={expandedChartOpen}
             onChange={setSelectedDateIndex}
+            onPlayingChange={setPlaying}
           />
         </section>
       ) : null}
