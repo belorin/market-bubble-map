@@ -1,6 +1,7 @@
 import { getSectorColor, type MarketBubbleDatum } from '../data/sampleMarketData'
 
 export type AxisScaleMode = 'linear' | 'compressed'
+export type ChartMetricMode = 'relative' | 'absolute'
 
 const symlogConstant = 25
 
@@ -51,6 +52,55 @@ export const getAxisDomain = (
   return [-padded, padded] as [number, number]
 }
 
+export const getPositiveAxisDomain = (
+  data: MarketBubbleDatum[],
+  key: 'marketCap' | 'tradingValue',
+  fallback: [number, number],
+) => {
+  if (data.length === 0) {
+    return fallback
+  }
+
+  const values = data
+    .map((datum) => datum[key])
+    .filter((value) => Number.isFinite(value) && value > 0)
+
+  if (values.length === 0) {
+    return fallback
+  }
+
+  const minValue = Math.min(...values)
+  const maxValue = Math.max(...values)
+  return [Math.max(1, minValue * 0.72), Math.max(fallback[1], maxValue * 1.12)] as [
+    number,
+    number,
+  ]
+}
+
+export const createPositiveAxisScale = (
+  domain: [number, number],
+  range: [number, number],
+  scaleMode: AxisScaleMode,
+) => {
+  if (scaleMode === 'linear') {
+    return createClampedLinearScale(domain, range)
+  }
+
+  const safeDomain: [number, number] = [Math.max(1, domain[0]), Math.max(2, domain[1])]
+  const transform = (value: number) => Math.log10(Math.max(1, value))
+  const transformedDomain: [number, number] = [
+    transform(safeDomain[0]),
+    transform(safeDomain[1]),
+  ]
+  const transformedScale = createLinearScale(transformedDomain, range)
+
+  return (value: number) =>
+    clampToRange(
+      transformedScale(transform(clamp(value, safeDomain[0], safeDomain[1]))),
+      range,
+    )
+}
+
 export const createClampedLinearScale = (
   domain: [number, number],
   range: [number, number],
@@ -82,6 +132,16 @@ export const formatKrw = (value: number) => {
 
   const eok = value / 100_000_000
   return `${eok.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}억원`
+}
+
+export const formatKrwAxis = (value: number) => {
+  const jo = value / 1_000_000_000_000
+  if (jo >= 1) {
+    return `${jo.toLocaleString('ko-KR', { maximumFractionDigits: jo >= 10 ? 0 : 1 })}조`
+  }
+
+  const eok = value / 100_000_000
+  return `${eok.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}억`
 }
 
 export const getRelatedBubbleColors = (sector: string) => {

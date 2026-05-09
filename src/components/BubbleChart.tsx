@@ -2,11 +2,15 @@ import { useMemo, useState } from 'react'
 import type { MarketBubbleDatum } from '../data/sampleMarketData'
 import {
   createAxisScale,
+  createPositiveAxisScale,
   formatKrw,
+  formatKrwAxis,
   formatPercent,
   getAxisDomain,
   getBubbleWeight,
+  getPositiveAxisDomain,
   type AxisScaleMode,
+  type ChartMetricMode,
 } from '../utils/scales'
 import { getBubbleStatus } from '../utils/status'
 import { SplitBubble } from './SplitBubble'
@@ -15,6 +19,7 @@ type BubbleChartProps = {
   data: MarketBubbleDatum[]
   selectedId?: string
   selectedSector: string
+  chartMetricMode: ChartMetricMode
   axisScaleMode: AxisScaleMode
   onSelect: (datum: MarketBubbleDatum) => void
 }
@@ -33,12 +38,39 @@ export function BubbleChart({
   data,
   selectedId,
   selectedSector,
+  chartMetricMode,
   axisScaleMode,
   onSelect,
 }: BubbleChartProps) {
   const [tooltip, setTooltip] = useState<TooltipState>(null)
 
   const chartScales = useMemo(() => {
+    if (chartMetricMode === 'absolute') {
+      const xDomain = getPositiveAxisDomain(data, 'marketCap', [
+        100_000_000_000,
+        100_000_000_000_000,
+      ])
+      const yDomain = getPositiveAxisDomain(data, 'tradingValue', [
+        1_000_000_000,
+        1_000_000_000_000,
+      ])
+
+      return {
+        xDomain,
+        yDomain,
+        xScale: createPositiveAxisScale(
+          xDomain,
+          [margin.left, width - margin.right],
+          axisScaleMode,
+        ),
+        yScale: createPositiveAxisScale(
+          yDomain,
+          [height - margin.bottom, margin.top],
+          axisScaleMode,
+        ),
+      }
+    }
+
     const xDomain = getAxisDomain(data, 'return6m', [-80, 120])
     const yDomain = getAxisDomain(data, 'tradingValueChange6m', [-100, 180])
 
@@ -56,30 +88,34 @@ export function BubbleChart({
         axisScaleMode,
       ),
     }
-  }, [axisScaleMode, data])
+  }, [axisScaleMode, chartMetricMode, data])
 
   const layout = useMemo(() => {
     const maxWeight = Math.max(...data.map(getBubbleWeight), 1)
 
     return data.map((datum) => ({
       datum,
-      x: chartScales.xScale(datum.return6m),
-      y: chartScales.yScale(datum.tradingValueChange6m),
+      x: chartScales.xScale(
+        chartMetricMode === 'absolute' ? datum.marketCap : datum.return6m,
+      ),
+      y: chartScales.yScale(
+        chartMetricMode === 'absolute'
+          ? datum.tradingValue
+          : datum.tradingValueChange6m,
+      ),
       radius: 16 + (getBubbleWeight(datum) / maxWeight) * 42,
     }))
-  }, [chartScales, data])
+  }, [chartMetricMode, chartScales, data])
 
-  const xAxisY = chartScales.yScale(0)
-  const yAxisX = chartScales.xScale(0)
+  const xAxisY =
+    chartMetricMode === 'absolute'
+      ? height - margin.bottom
+      : chartScales.yScale(0)
+  const yAxisX =
+    chartMetricMode === 'absolute' ? margin.left : chartScales.xScale(0)
   const filtered = selectedSector !== '전체 보기'
-  const xTicks =
-    axisScaleMode === 'compressed'
-      ? [-200, -100, -50, 0, 50, 100, 200]
-      : [-80, -40, 0, 40, 80, 120]
-  const yTicks =
-    axisScaleMode === 'compressed'
-      ? [-200, -100, -50, 0, 50, 100, 200, 400]
-      : [-100, -50, 0, 50, 100, 150, 200]
+  const xTicks = getTicks(chartMetricMode, 'x', axisScaleMode)
+  const yTicks = getTicks(chartMetricMode, 'y', axisScaleMode)
   const visibleXTicks = xTicks.filter(
     (tick) => tick >= chartScales.xDomain[0] && tick <= chartScales.xDomain[1],
   )
@@ -126,7 +162,7 @@ export function BubbleChart({
               y={height - 28}
               textAnchor="middle"
             >
-              {tick}%
+              {formatAxisTick(tick, chartMetricMode)}
             </text>
           </g>
         ))}
@@ -145,7 +181,7 @@ export function BubbleChart({
               y={chartScales.yScale(tick) + 4}
               textAnchor="end"
             >
-              {tick}%
+              {formatAxisTick(tick, chartMetricMode)}
             </text>
           </g>
         ))}
@@ -153,30 +189,36 @@ export function BubbleChart({
         <line className="zero-axis" x1={margin.left} x2={width - margin.right} y1={xAxisY} y2={xAxisY} />
         <line className="zero-axis" x1={yAxisX} x2={yAxisX} y1={margin.top} y2={height - margin.bottom} />
 
-        <text className="quadrant-label" x={width - 154} y={margin.top + 34}>
-          주도
+        <text className="quadrant-label" x={width - 224} y={margin.top + 34}>
+          {chartMetricMode === 'absolute' ? '큰 체급 · 높은 관심' : '주도'}
         </text>
-        <text className="quadrant-label" x={width - 190} y={height - 92}>
-          조용한 상승
+        <text className="quadrant-label" x={width - 248} y={height - 92}>
+          {chartMetricMode === 'absolute'
+            ? '큰 체급 · 조용한 거래'
+            : '조용한 상승'}
         </text>
         <text className="quadrant-label" x={margin.left + 28} y={margin.top + 34}>
-          투매/손바뀜
+          {chartMetricMode === 'absolute'
+            ? '작은 체급 · 거래 집중'
+            : '투매/손바뀜'}
         </text>
         <text className="quadrant-label" x={margin.left + 34} y={height - 92}>
-          소외
+          {chartMetricMode === 'absolute' ? '작은 체급 · 조용함' : '소외'}
         </text>
 
         <text className="axis-label" x={width / 2} y={height - 8} textAnchor="middle">
-          최근 6개월 수익률
+          {chartMetricMode === 'absolute' ? '시가총액' : '최근 6개월 수익률'}
         </text>
         <text
           className="axis-label"
           transform={`translate(18 ${height / 2}) rotate(-90)`}
           textAnchor="middle"
         >
-          최근 6개월 거래대금 변화율
+          {chartMetricMode === 'absolute'
+            ? '거래대금'
+            : '최근 6개월 거래대금 변화율'}
         </text>
-        {axisScaleMode === 'compressed' ? (
+        {axisScaleMode === 'compressed' || chartMetricMode === 'absolute' ? (
           <text className="scale-note" x={width - margin.right} y={height - 8} textAnchor="end">
             축은 압축 표시 중이며, 수치는 원자료 기준입니다.
           </text>
@@ -219,3 +261,42 @@ export function BubbleChart({
     </section>
   )
 }
+
+type AxisName = 'x' | 'y'
+
+const getTicks = (
+  chartMetricMode: ChartMetricMode,
+  axis: AxisName,
+  axisScaleMode: AxisScaleMode,
+) => {
+  if (chartMetricMode === 'absolute') {
+    return axis === 'x'
+      ? [
+          100_000_000_000,
+          1_000_000_000_000,
+          10_000_000_000_000,
+          100_000_000_000_000,
+          500_000_000_000_000,
+        ]
+      : [
+          1_000_000_000,
+          10_000_000_000,
+          100_000_000_000,
+          1_000_000_000_000,
+          5_000_000_000_000,
+        ]
+  }
+
+  if (axis === 'x') {
+    return axisScaleMode === 'compressed'
+      ? [-200, -100, -50, 0, 50, 100, 200]
+      : [-80, -40, 0, 40, 80, 120]
+  }
+
+  return axisScaleMode === 'compressed'
+    ? [-200, -100, -50, 0, 50, 100, 200, 400]
+    : [-100, -50, 0, 50, 100, 150, 200]
+}
+
+const formatAxisTick = (value: number, chartMetricMode: ChartMetricMode) =>
+  chartMetricMode === 'absolute' ? formatKrwAxis(value) : `${value}%`

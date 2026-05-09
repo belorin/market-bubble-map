@@ -15,7 +15,7 @@ import {
   sectors,
   type MarketBubbleDatum,
 } from './data/sampleMarketData'
-import type { AxisScaleMode } from './utils/scales'
+import type { AxisScaleMode, ChartMetricMode } from './utils/scales'
 
 type ViewMode = MarketBubbleDatum['level']
 
@@ -26,6 +26,8 @@ function App() {
   const [selectedDateIndex, setSelectedDateIndex] = useState(0)
   const [selectedSector, setSelectedSector] = useState('전체 보기')
   const [viewMode, setViewMode] = useState<ViewMode>('sector')
+  const [chartMetricMode, setChartMetricMode] =
+    useState<ChartMetricMode>('relative')
   const [axisScaleMode, setAxisScaleMode] =
     useState<AxisScaleMode>('compressed')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -141,6 +143,24 @@ function App() {
               selectedSector={selectedSector}
               onChange={setSelectedSector}
             />
+            <section className="metric-toggle" aria-label="지도 기준">
+              <span>지도 기준:</span>
+              <button
+                type="button"
+                className={chartMetricMode === 'relative' ? 'active' : ''}
+                onClick={() => setChartMetricMode('relative')}
+              >
+                변화율
+              </button>
+              <button
+                type="button"
+                className={chartMetricMode === 'absolute' ? 'active' : ''}
+                onClick={() => setChartMetricMode('absolute')}
+              >
+                규모
+              </button>
+              <em>변화율 모드는 최근 움직임을, 규모 모드는 실제 체급과 거래 집중도를 보여줍니다.</em>
+            </section>
             <section className="scale-toggle" aria-label="축 스케일">
               <span>축 스케일:</span>
               <button
@@ -163,6 +183,7 @@ function App() {
               data={currentData}
               selectedId={selectedDatum?.id}
               selectedSector={selectedSector}
+              chartMetricMode={chartMetricMode}
               axisScaleMode={axisScaleMode}
               onSelect={handleSelectDatum}
             />
