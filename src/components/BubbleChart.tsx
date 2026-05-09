@@ -21,6 +21,7 @@ type BubbleChartProps = {
   selectedSector: string
   chartMetricMode: ChartMetricMode
   axisScaleMode: AxisScaleMode
+  variant?: 'normal' | 'expanded'
   onSelect: (datum: MarketBubbleDatum) => void
 }
 
@@ -30,19 +31,29 @@ type TooltipState = {
   y: number
 } | null
 
-const width = 900
-const height = 560
-const margin = { top: 36, right: 42, bottom: 58, left: 72 }
-
 export function BubbleChart({
   data,
   selectedId,
   selectedSector,
   chartMetricMode,
   axisScaleMode,
+  variant = 'normal',
   onSelect,
 }: BubbleChartProps) {
   const [tooltip, setTooltip] = useState<TooltipState>(null)
+  const chartSize =
+    variant === 'expanded'
+      ? {
+          width: 1320,
+          height: 760,
+          margin: { top: 48, right: 64, bottom: 72, left: 96 },
+        }
+      : {
+          width: 900,
+          height: 560,
+          margin: { top: 36, right: 42, bottom: 58, left: 72 },
+        }
+  const { width, height, margin } = chartSize
 
   const chartScales = useMemo(() => {
     if (chartMetricMode === 'absolute') {
@@ -88,7 +99,7 @@ export function BubbleChart({
         axisScaleMode,
       ),
     }
-  }, [axisScaleMode, chartMetricMode, data])
+  }, [axisScaleMode, chartMetricMode, data, height, margin, width])
 
   const layout = useMemo(() => {
     const maxWeight = Math.max(...data.map(getBubbleWeight), 1)
@@ -126,7 +137,7 @@ export function BubbleChart({
   return (
     <section className="chart-panel" aria-label="시장 버블 차트">
       <svg
-        className="bubble-chart"
+        className={`bubble-chart ${variant === 'expanded' ? 'expanded' : ''}`}
         viewBox={`0 0 ${width} ${height}`}
         role="img"
         aria-label="섹터별 6개월 수익률과 거래대금 변화율 버블 지도"
@@ -253,9 +264,18 @@ export function BubbleChart({
         >
           <strong>{tooltip.datum.name}</strong>
           <span>{getBubbleStatus(tooltip.datum)}</span>
-          <span>수익률 {formatPercent(tooltip.datum.return6m)}</span>
-          <span>거래 변화 {formatPercent(tooltip.datum.tradingValueChange6m)}</span>
-          <span>시가총액 {formatKrw(tooltip.datum.marketCap)}</span>
+          <span>섹터 {tooltip.datum.sector}</span>
+          {chartMetricMode === 'absolute' ? (
+            <>
+              <span>시가총액 {formatKrw(tooltip.datum.marketCap)}</span>
+              <span>거래대금 {formatKrw(tooltip.datum.tradingValue)}</span>
+            </>
+          ) : (
+            <>
+              <span>최근 6개월 수익률 {formatPercent(tooltip.datum.return6m)}</span>
+              <span>거래대금 변화율 {formatPercent(tooltip.datum.tradingValueChange6m)}</span>
+            </>
+          )}
         </div>
       ) : null}
     </section>

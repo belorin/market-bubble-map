@@ -210,6 +210,10 @@ h1 {
   font-style: normal;
 }
 
+.expand-button {
+  margin-left: auto;
+}
+
 .sector-filter button {
   padding: 8px 11px;
   color: #aebfd3;
@@ -235,6 +239,10 @@ h1 {
   display: block;
   width: 100%;
   height: auto;
+}
+
+.bubble-chart.expanded {
+  max-height: calc(100vh - 210px);
 }
 
 .chart-bg {
@@ -373,6 +381,51 @@ h1 {
   color: #aebfd3;
   font-size: 12px;
   line-height: 1.55;
+}
+
+.chart-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 18px;
+  background:
+    linear-gradient(180deg, rgba(8, 17, 31, 0.98), rgba(3, 8, 17, 0.98)),
+    #050c18;
+}
+
+.overlay-header,
+.overlay-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.overlay-header {
+  justify-content: space-between;
+}
+
+.overlay-header strong {
+  color: #ffffff;
+  font-size: 18px;
+}
+
+.overlay-header button {
+  padding: 9px 14px;
+}
+
+.overlay-controls {
+  flex-wrap: wrap;
+}
+
+.chart-overlay .chart-panel {
+  min-height: 0;
+}
+
+.chart-overlay .timeline-panel {
+  margin-top: 0;
 }
 
 .timeline-panel {

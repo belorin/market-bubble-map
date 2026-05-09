@@ -31,6 +31,7 @@ function App() {
   const [axisScaleMode, setAxisScaleMode] =
     useState<AxisScaleMode>('compressed')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [expandedChartOpen, setExpandedChartOpen] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -73,6 +74,21 @@ function App() {
     setSelectedId(null)
   }, [viewMode])
 
+  useEffect(() => {
+    if (!expandedChartOpen) {
+      return
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setExpandedChartOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [expandedChartOpen])
+
   const selectedDatum =
     currentData.find((datum) => datum.id === selectedId) ?? currentData[0]
 
@@ -86,9 +102,7 @@ function App() {
         <div>
           <h1>Korean Market Bubble Map</h1>
           <p className="subtitle">한국 주식시장의 무게중심과 관심 이동</p>
-          <p className="axis-guide">
-            X축은 최근 6개월 수익률, Y축은 최근 6개월 거래대금 변화율입니다.
-          </p>
+          <p className="axis-guide">변화율과 규모를 전환해 보는 시장 지도입니다.</p>
         </div>
         <div className="date-card">
           <span>현재 선택된 날짜</span>
@@ -97,8 +111,7 @@ function App() {
       </header>
 
       <section className="notice">
-        현재 화면은 실제 시세가 아닌 샘플 데이터로 구성된 시각화
-        프로토타입입니다.
+        샘플 데이터는 프로토타입용입니다.
       </section>
 
       <section className="data-status" aria-label="데이터 상태">
@@ -144,7 +157,7 @@ function App() {
               onChange={setSelectedSector}
             />
             <section className="metric-toggle" aria-label="지도 기준">
-              <span>지도 기준:</span>
+              <span>자료 기준:</span>
               <button
                 type="button"
                 className={chartMetricMode === 'relative' ? 'active' : ''}
@@ -159,7 +172,6 @@ function App() {
               >
                 규모
               </button>
-              <em>변화율 모드는 최근 움직임을, 규모 모드는 실제 체급과 거래 집중도를 보여줍니다.</em>
             </section>
             <section className="scale-toggle" aria-label="축 스케일">
               <span>축 스케일:</span>
@@ -177,7 +189,13 @@ function App() {
               >
                 압축
               </button>
-              <em>압축은 극단값을 눌러 전체 시장 분포를 보기 쉽게 표시합니다.</em>
+              <button
+                type="button"
+                className="expand-button"
+                onClick={() => setExpandedChartOpen(true)}
+              >
+                차트 크게 보기
+              </button>
             </section>
             <BubbleChart
               data={currentData}
@@ -199,6 +217,85 @@ function App() {
           </aside>
         </section>
       )}
+      {expandedChartOpen && !loading && marketDataState?.source !== 'failed' ? (
+        <section className="chart-overlay" role="dialog" aria-modal="true" aria-label="확대 차트">
+          <div className="overlay-header">
+            <div>
+              <strong>현재 날짜 {currentDate}</strong>
+            </div>
+            <button type="button" onClick={() => setExpandedChartOpen(false)}>
+              닫기
+            </button>
+          </div>
+          <div className="overlay-controls">
+            <section className="view-toggle" aria-label="보기 단위">
+              <span>보기 단위:</span>
+              <button
+                type="button"
+                className={viewMode === 'sector' ? 'active' : ''}
+                onClick={() => setViewMode('sector')}
+              >
+                섹터
+              </button>
+              <button
+                type="button"
+                className={viewMode === 'stock' ? 'active' : ''}
+                onClick={() => setViewMode('stock')}
+              >
+                종목
+              </button>
+            </section>
+            <section className="metric-toggle" aria-label="지도 기준">
+              <span>자료 기준:</span>
+              <button
+                type="button"
+                className={chartMetricMode === 'relative' ? 'active' : ''}
+                onClick={() => setChartMetricMode('relative')}
+              >
+                변화율
+              </button>
+              <button
+                type="button"
+                className={chartMetricMode === 'absolute' ? 'active' : ''}
+                onClick={() => setChartMetricMode('absolute')}
+              >
+                규모
+              </button>
+            </section>
+            <section className="scale-toggle" aria-label="축 스케일">
+              <span>축 스케일:</span>
+              <button
+                type="button"
+                className={axisScaleMode === 'linear' ? 'active' : ''}
+                onClick={() => setAxisScaleMode('linear')}
+              >
+                선형
+              </button>
+              <button
+                type="button"
+                className={axisScaleMode === 'compressed' ? 'active' : ''}
+                onClick={() => setAxisScaleMode('compressed')}
+              >
+                압축
+              </button>
+            </section>
+          </div>
+          <BubbleChart
+            data={currentData}
+            selectedId={selectedDatum?.id}
+            selectedSector={selectedSector}
+            chartMetricMode={chartMetricMode}
+            axisScaleMode={axisScaleMode}
+            variant="expanded"
+            onSelect={handleSelectDatum}
+          />
+          <TimelineControl
+            dates={dates}
+            selectedIndex={selectedDateIndex}
+            onChange={setSelectedDateIndex}
+          />
+        </section>
+      ) : null}
     </main>
   )
 }
