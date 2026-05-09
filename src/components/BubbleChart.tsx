@@ -9,6 +9,7 @@ import {
   getAxisDomain,
   getBubbleWeight,
   getPositiveAxisDomain,
+  getRelatedBubbleColors,
   type AxisScaleMode,
   type ChartMetricMode,
 } from '../utils/scales'
@@ -21,6 +22,7 @@ type BubbleChartProps = {
   selectedSector: string
   chartMetricMode: ChartMetricMode
   axisScaleMode: AxisScaleMode
+  trailData?: MarketBubbleDatum[]
   variant?: 'normal' | 'expanded'
   onSelect: (datum: MarketBubbleDatum) => void
 }
@@ -37,6 +39,7 @@ export function BubbleChart({
   selectedSector,
   chartMetricMode,
   axisScaleMode,
+  trailData = [],
   variant = 'normal',
   onSelect,
 }: BubbleChartProps) {
@@ -117,6 +120,30 @@ export function BubbleChart({
       radius: 16 + (getBubbleWeight(datum) / maxWeight) * 42,
     }))
   }, [chartMetricMode, chartScales, data])
+
+  const trailLayout = useMemo(
+    () =>
+      trailData.map((datum, index) => ({
+        datum,
+        x: chartScales.xScale(
+          chartMetricMode === 'absolute' ? datum.marketCap : datum.return6m,
+        ),
+        y: chartScales.yScale(
+          chartMetricMode === 'absolute'
+            ? datum.tradingValue
+            : datum.tradingValueChange6m,
+        ),
+        opacity: 0.18 + ((index + 1) / Math.max(trailData.length, 1)) * 0.48,
+      })),
+    [chartMetricMode, chartScales, trailData],
+  )
+  const trailPath = trailLayout
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+    .join(' ')
+  const trailColor =
+    trailLayout.length > 0
+      ? getRelatedBubbleColors(trailLayout[trailLayout.length - 1].datum.sector).right
+      : '#70d2ff'
 
   const xAxisY =
     chartMetricMode === 'absolute'
@@ -233,6 +260,27 @@ export function BubbleChart({
           <text className="scale-note" x={width - margin.right} y={height - 8} textAnchor="end">
             축은 압축 표시 중이며, 수치는 원자료 기준입니다.
           </text>
+        ) : null}
+
+        {trailLayout.length > 1 ? (
+          <g className="movement-trail" aria-hidden="true">
+            <path
+              className="trail-line"
+              d={trailPath}
+              stroke={trailColor}
+            />
+            {trailLayout.map((point, index) => (
+              <circle
+                key={`${point.datum.date}-${point.datum.id}`}
+                className="trail-dot"
+                cx={point.x}
+                cy={point.y}
+                r={index === trailLayout.length - 1 ? 4.4 : 3.2}
+                fill={trailColor}
+                opacity={point.opacity}
+              />
+            ))}
+          </g>
         ) : null}
 
         {layout.map(({ datum, x, y, radius }) => (

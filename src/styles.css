@@ -292,6 +292,24 @@ h1 {
     transform 560ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.movement-trail {
+  pointer-events: none;
+}
+
+.trail-line {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 4 6;
+  opacity: 0.52;
+}
+
+.trail-dot {
+  stroke: rgba(5, 12, 24, 0.72);
+  stroke-width: 1.4;
+}
+
 .bubble-hit {
   fill: transparent;
 }

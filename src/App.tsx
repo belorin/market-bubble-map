@@ -17,6 +17,7 @@ import {
   type MarketBubbleDatum,
 } from './data/sampleMarketData'
 import type { AxisScaleMode, ChartMetricMode } from './utils/scales'
+import { getTrailPoints, type TrailPeriod } from './utils/trails'
 
 type ViewMode = MarketBubbleDatum['level']
 
@@ -35,6 +36,8 @@ function App() {
   const [expandedChartOpen, setExpandedChartOpen] = useState(false)
   const [refreshingData, setRefreshingData] = useState(false)
   const [refreshMessage, setRefreshMessage] = useState('')
+  const [trailEnabled, setTrailEnabled] = useState(false)
+  const [trailPeriod, setTrailPeriod] = useState<TrailPeriod>('3m')
 
   useEffect(() => {
     let active = true
@@ -96,6 +99,20 @@ function App() {
   const selectedDatum =
     currentData.find((datum) => datum.id === selectedId) ?? currentData[0]
 
+  const trailData = useMemo(
+    () =>
+      trailEnabled
+        ? getTrailPoints({
+            data: marketData,
+            dates,
+            currentDate,
+            selectedDatum: selectedId ? selectedDatum : undefined,
+            period: trailPeriod,
+          })
+        : [],
+    [currentDate, dates, marketData, selectedDatum, trailEnabled, trailPeriod],
+  )
+
   const handleSelectDatum = (datum: MarketBubbleDatum) => {
     setSelectedId(datum.id)
   }
@@ -153,6 +170,20 @@ function App() {
           )
         }
         ariaLabel="축 스케일 선택"
+      />
+      <ChartSettingToggle
+        label="이동 경로"
+        valueLabel={trailEnabled ? '켬' : '끔'}
+        onToggle={() => setTrailEnabled((current) => !current)}
+        ariaLabel="이동 경로 표시 전환"
+      />
+      <ChartSettingToggle
+        label="경로 기간"
+        valueLabel={trailPeriod === '3m' ? '3개월' : '6개월'}
+        onToggle={() =>
+          setTrailPeriod((current) => (current === '3m' ? '6m' : '3m'))
+        }
+        ariaLabel="경로 기간 전환"
       />
     </section>
   )
@@ -228,6 +259,7 @@ function App() {
               selectedSector={selectedSector}
               chartMetricMode={chartMetricMode}
               axisScaleMode={axisScaleMode}
+              trailData={trailData}
               onSelect={handleSelectDatum}
             />
             <TimelineControl
@@ -261,6 +293,7 @@ function App() {
             selectedSector={selectedSector}
             chartMetricMode={chartMetricMode}
             axisScaleMode={axisScaleMode}
+            trailData={trailData}
             variant="expanded"
             onSelect={handleSelectDatum}
           />
