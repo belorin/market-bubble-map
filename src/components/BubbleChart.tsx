@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 import type { MarketBubbleDatum } from '../data/sampleMarketData'
 import {
-  createLinearScale,
+  createAxisScale,
   formatKrw,
   formatPercent,
+  getAxisDomain,
   getBubbleWeight,
+  type AxisScaleMode,
 } from '../utils/scales'
 import { getBubbleStatus } from '../utils/status'
 import { SplitBubble } from './SplitBubble'
@@ -13,6 +15,7 @@ type BubbleChartProps = {
   data: MarketBubbleDatum[]
   selectedId?: string
   selectedSector: string
+  axisScaleMode: AxisScaleMode
   onSelect: (datum: MarketBubbleDatum) => void
 }
 
@@ -30,38 +33,59 @@ export function BubbleChart({
   data,
   selectedId,
   selectedSector,
+  axisScaleMode,
   onSelect,
 }: BubbleChartProps) {
   const [tooltip, setTooltip] = useState<TooltipState>(null)
 
+  const chartScales = useMemo(() => {
+    const xDomain = getAxisDomain(data, 'return6m', [-80, 120])
+    const yDomain = getAxisDomain(data, 'tradingValueChange6m', [-100, 180])
+
+    return {
+      xDomain,
+      yDomain,
+      xScale: createAxisScale(
+        xDomain,
+        [margin.left, width - margin.right],
+        axisScaleMode,
+      ),
+      yScale: createAxisScale(
+        yDomain,
+        [height - margin.bottom, margin.top],
+        axisScaleMode,
+      ),
+    }
+  }, [axisScaleMode, data])
+
   const layout = useMemo(() => {
-    const xScale = createLinearScale(
-      [-60, 85],
-      [margin.left, width - margin.right],
-    )
-    const yScale = createLinearScale(
-      [-65, 165],
-      [height - margin.bottom, margin.top],
-    )
     const maxWeight = Math.max(...data.map(getBubbleWeight), 1)
 
     return data.map((datum) => ({
       datum,
-      x: xScale(datum.return6m),
-      y: yScale(datum.tradingValueChange6m),
+      x: chartScales.xScale(datum.return6m),
+      y: chartScales.yScale(datum.tradingValueChange6m),
       radius: 16 + (getBubbleWeight(datum) / maxWeight) * 42,
     }))
-  }, [data])
+  }, [chartScales, data])
 
-  const xAxisY = createLinearScale(
-    [-65, 165],
-    [height - margin.bottom, margin.top],
-  )(0)
-  const yAxisX = createLinearScale(
-    [-60, 85],
-    [margin.left, width - margin.right],
-  )(0)
+  const xAxisY = chartScales.yScale(0)
+  const yAxisX = chartScales.xScale(0)
   const filtered = selectedSector !== '전체 보기'
+  const xTicks =
+    axisScaleMode === 'compressed'
+      ? [-200, -100, -50, 0, 50, 100, 200]
+      : [-80, -40, 0, 40, 80, 120]
+  const yTicks =
+    axisScaleMode === 'compressed'
+      ? [-200, -100, -50, 0, 50, 100, 200, 400]
+      : [-100, -50, 0, 50, 100, 150, 200]
+  const visibleXTicks = xTicks.filter(
+    (tick) => tick >= chartScales.xDomain[0] && tick <= chartScales.xDomain[1],
+  )
+  const visibleYTicks = yTicks.filter(
+    (tick) => tick >= chartScales.yDomain[0] && tick <= chartScales.yDomain[1],
+  )
 
   return (
     <section className="chart-panel" aria-label="시장 버블 차트">
@@ -87,18 +111,18 @@ export function BubbleChart({
           fill="url(#chartGlow)"
         />
 
-        {[-40, -20, 0, 20, 40, 60, 80].map((tick) => (
+        {visibleXTicks.map((tick) => (
           <g key={`x-${tick}`}>
             <line
               className="grid-line"
-              x1={createLinearScale([-60, 85], [margin.left, width - margin.right])(tick)}
-              x2={createLinearScale([-60, 85], [margin.left, width - margin.right])(tick)}
+              x1={chartScales.xScale(tick)}
+              x2={chartScales.xScale(tick)}
               y1={margin.top}
               y2={height - margin.bottom}
             />
             <text
               className="axis-tick"
-              x={createLinearScale([-60, 85], [margin.left, width - margin.right])(tick)}
+              x={chartScales.xScale(tick)}
               y={height - 28}
               textAnchor="middle"
             >
@@ -106,23 +130,19 @@ export function BubbleChart({
             </text>
           </g>
         ))}
-        {[-50, 0, 50, 100, 150].map((tick) => (
+        {visibleYTicks.map((tick) => (
           <g key={`y-${tick}`}>
             <line
               className="grid-line"
               x1={margin.left}
               x2={width - margin.right}
-              y1={createLinearScale([-65, 165], [height - margin.bottom, margin.top])(tick)}
-              y2={createLinearScale([-65, 165], [height - margin.bottom, margin.top])(tick)}
+              y1={chartScales.yScale(tick)}
+              y2={chartScales.yScale(tick)}
             />
             <text
               className="axis-tick"
               x={margin.left - 14}
-              y={
-                createLinearScale([-65, 165], [height - margin.bottom, margin.top])(
-                  tick,
-                ) + 4
-              }
+              y={chartScales.yScale(tick) + 4}
               textAnchor="end"
             >
               {tick}%
@@ -156,6 +176,11 @@ export function BubbleChart({
         >
           최근 6개월 거래대금 변화율
         </text>
+        {axisScaleMode === 'compressed' ? (
+          <text className="scale-note" x={width - margin.right} y={height - 8} textAnchor="end">
+            축은 압축 표시 중이며, 수치는 원자료 기준입니다.
+          </text>
+        ) : null}
 
         {layout.map(({ datum, x, y, radius }) => (
           <SplitBubble

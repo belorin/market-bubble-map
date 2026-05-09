@@ -173,7 +173,8 @@ h1 {
   margin-bottom: 12px;
 }
 
-.view-toggle {
+.view-toggle,
+.scale-toggle {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -182,15 +183,26 @@ h1 {
   font-size: 13px;
 }
 
-.view-toggle button {
+.view-toggle button,
+.scale-toggle button {
   padding: 7px 12px;
   color: #aebfd3;
 }
 
-.view-toggle button.active {
+.view-toggle button.active,
+.scale-toggle button.active {
   border-color: rgba(102, 209, 158, 0.82);
   color: #ffffff;
   background: rgba(31, 106, 74, 0.42);
+}
+
+.scale-toggle {
+  flex-wrap: wrap;
+}
+
+.scale-toggle em {
+  color: #7f95ac;
+  font-style: normal;
 }
 
 .sector-filter button {
@@ -236,9 +248,14 @@ h1 {
 }
 
 .axis-label,
-.axis-tick {
+.axis-tick,
+.scale-note {
   fill: #8da6bf;
   font-size: 13px;
+}
+
+.scale-note {
+  fill: #aebfd3;
 }
 
 .quadrant-label {

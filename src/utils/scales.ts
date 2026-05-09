@@ -1,5 +1,9 @@
 import { getSectorColor, type MarketBubbleDatum } from '../data/sampleMarketData'
 
+export type AxisScaleMode = 'linear' | 'compressed'
+
+const symlogConstant = 25
+
 export const createLinearScale = (
   domain: [number, number],
   range: [number, number],
@@ -10,6 +14,58 @@ export const createLinearScale = (
   return (value: number) =>
     range[0] + ((value - domain[0]) / domainSize) * rangeSize
 }
+
+export const createAxisScale = (
+  domain: [number, number],
+  range: [number, number],
+  scaleMode: AxisScaleMode,
+) => {
+  if (scaleMode === 'linear') {
+    return createClampedLinearScale(domain, range)
+  }
+
+  const transform = (value: number) =>
+    Math.sign(value) * Math.log1p(Math.abs(value) / symlogConstant)
+  const transformedDomain: [number, number] = [
+    transform(domain[0]),
+    transform(domain[1]),
+  ]
+  const transformedScale = createLinearScale(transformedDomain, range)
+
+  return (value: number) =>
+    clampToRange(transformedScale(transform(clamp(value, domain[0], domain[1]))), range)
+}
+
+export const getAxisDomain = (
+  data: MarketBubbleDatum[],
+  key: 'return6m' | 'tradingValueChange6m',
+  fallback: [number, number],
+) => {
+  if (data.length === 0) {
+    return fallback
+  }
+
+  const values = data.map((datum) => datum[key]).filter(Number.isFinite)
+  const extent = Math.max(Math.abs(fallback[0]), Math.abs(fallback[1]), ...values.map(Math.abs))
+  const padded = Math.ceil((extent * 1.08) / 10) * 10
+  return [-padded, padded] as [number, number]
+}
+
+export const createClampedLinearScale = (
+  domain: [number, number],
+  range: [number, number],
+) => {
+  const scale = createLinearScale(domain, range)
+
+  return (value: number) =>
+    clampToRange(scale(clamp(value, domain[0], domain[1])), range)
+}
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value))
+
+const clampToRange = (value: number, range: [number, number]) =>
+  Math.min(Math.max(value, Math.min(...range)), Math.max(...range))
 
 export const getBubbleWeight = (datum: MarketBubbleDatum) =>
   Math.sqrt(datum.marketCap / 1_000_000_000_000) * 2.2 +

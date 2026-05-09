@@ -15,6 +15,7 @@ import {
   sectors,
   type MarketBubbleDatum,
 } from './data/sampleMarketData'
+import type { AxisScaleMode } from './utils/scales'
 
 type ViewMode = MarketBubbleDatum['level']
 
@@ -25,6 +26,8 @@ function App() {
   const [selectedDateIndex, setSelectedDateIndex] = useState(0)
   const [selectedSector, setSelectedSector] = useState('전체 보기')
   const [viewMode, setViewMode] = useState<ViewMode>('sector')
+  const [axisScaleMode, setAxisScaleMode] =
+    useState<AxisScaleMode>('compressed')
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -138,10 +141,29 @@ function App() {
               selectedSector={selectedSector}
               onChange={setSelectedSector}
             />
+            <section className="scale-toggle" aria-label="축 스케일">
+              <span>축 스케일:</span>
+              <button
+                type="button"
+                className={axisScaleMode === 'linear' ? 'active' : ''}
+                onClick={() => setAxisScaleMode('linear')}
+              >
+                선형
+              </button>
+              <button
+                type="button"
+                className={axisScaleMode === 'compressed' ? 'active' : ''}
+                onClick={() => setAxisScaleMode('compressed')}
+              >
+                압축
+              </button>
+              <em>압축은 극단값을 눌러 전체 시장 분포를 보기 쉽게 표시합니다.</em>
+            </section>
             <BubbleChart
               data={currentData}
               selectedId={selectedDatum?.id}
               selectedSector={selectedSector}
+              axisScaleMode={axisScaleMode}
               onSelect={handleSelectDatum}
             />
             <TimelineControl
