@@ -355,7 +355,7 @@ h1 {
 
 .timeline-panel {
   display: grid;
-  grid-template-columns: auto minmax(160px, 1fr) auto;
+  grid-template-columns: auto auto minmax(160px, 1fr) auto;
   gap: 14px;
   align-items: center;
   margin-top: 12px;
@@ -371,9 +371,25 @@ h1 {
   gap: 8px;
 }
 
-.timeline-actions button {
+.timeline-actions button,
+.speed-options button {
   padding: 8px 10px;
   font-size: 13px;
+}
+
+.speed-options {
+  display: flex;
+  gap: 6px;
+}
+
+.speed-options button {
+  color: #aebfd3;
+}
+
+.speed-options button.active {
+  border-color: rgba(102, 209, 158, 0.82);
+  color: #ffffff;
+  background: rgba(31, 106, 74, 0.42);
 }
 
 .timeline-panel input[type='range'] {

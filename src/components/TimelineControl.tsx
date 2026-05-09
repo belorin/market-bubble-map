@@ -6,34 +6,43 @@ type TimelineControlProps = {
   onChange: (index: number) => void
 }
 
+const playbackSpeeds = {
+  느림: 900,
+  보통: 500,
+  빠름: 250,
+} as const
+
+type PlaybackSpeed = keyof typeof playbackSpeeds
+
 export function TimelineControl({
   dates,
   selectedIndex,
   onChange,
 }: TimelineControlProps) {
   const [playing, setPlaying] = useState(false)
+  const [speed, setSpeed] = useState<PlaybackSpeed>('보통')
 
   useEffect(() => {
-    if (!playing) {
+    if (!playing || dates.length === 0) {
       return
     }
 
     const intervalId = window.setInterval(() => {
       onChange((selectedIndex + 1) % dates.length)
-    }, 900)
+    }, playbackSpeeds[speed])
 
     return () => window.clearInterval(intervalId)
-  }, [dates.length, onChange, playing, selectedIndex])
+  }, [dates.length, onChange, playing, selectedIndex, speed])
 
   return (
-    <section className="timeline-panel" aria-label="월별 재생 컨트롤">
+    <section className="timeline-panel" aria-label="시점 재생 컨트롤">
       <div className="timeline-actions">
         <button
           type="button"
           onClick={() => onChange(Math.max(0, selectedIndex - 1))}
-          aria-label="이전 달"
+          aria-label="이전 시점"
         >
-          이전 달
+          이전 시점
         </button>
         <button
           type="button"
@@ -54,10 +63,22 @@ export function TimelineControl({
         <button
           type="button"
           onClick={() => onChange((selectedIndex + 1) % dates.length)}
-          aria-label="다음 달"
+          aria-label="다음 시점"
         >
-          다음 달
+          다음 시점
         </button>
+      </div>
+      <div className="speed-options" aria-label="재생 속도">
+        {(Object.keys(playbackSpeeds) as PlaybackSpeed[]).map((speedOption) => (
+          <button
+            key={speedOption}
+            type="button"
+            className={speed === speedOption ? 'active' : ''}
+            onClick={() => setSpeed(speedOption)}
+          >
+            {speedOption}
+          </button>
+        ))}
       </div>
       <input
         type="range"

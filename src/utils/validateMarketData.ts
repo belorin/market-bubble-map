@@ -18,7 +18,7 @@ const isMarketBubbleDatum = (value: unknown): value is MarketBubbleDatum => {
 
   return (
     typeof datum.date === 'string' &&
-    /^\d{4}-\d{2}$/.test(datum.date) &&
+    /^\d{4}-\d{2}(-\d{2})?$/.test(datum.date) &&
     isLevel(datum.level) &&
     typeof datum.id === 'string' &&
     datum.id.length > 0 &&

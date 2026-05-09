@@ -56,25 +56,33 @@ python3 -m venv .venv
 pip install -r scripts/requirements.txt
 ```
 
-작은 테스트:
+작은 주간 데이터 테스트:
 
 ```bash
-python scripts/generate_market_bubbles.py --from 2025-01 --to 2025-03 --limit-tickers 3 --sleep 0.5
+python scripts/generate_market_bubbles.py --from 2025-01 --to 2025-03 --limit-tickers 3 --frequency weekly --sleep 0.5
 ```
 
 섹터 제한 예시:
 
 ```bash
-python scripts/generate_market_bubbles.py --from 2025-01 --to 2025-03 --sectors 반도체,자동차 --sleep 0.5
+python scripts/generate_market_bubbles.py --from 2025-01 --to 2025-03 --sectors 반도체,자동차 --frequency weekly --sleep 0.5
 ```
 
-더 긴 기간 생성:
+월간 데이터가 필요할 때:
 
 ```bash
-python scripts/generate_market_bubbles.py --from 2024-01 --to 2026-05
+python scripts/generate_market_bubbles.py --from 2025-01 --to 2025-06 --limit-tickers 5 --frequency monthly --sleep 0.5
+```
+
+더 긴 주간 기간 생성:
+
+```bash
+python scripts/generate_market_bubbles.py --from 2024-01 --to 2026-05 --frequency weekly
 ```
 
 생성기는 `scripts/stock-sector-map.csv`를 읽고 `public/data/market-bubbles.json`을 씁니다. 이 파일이 있으면 앱 시작 시 화면에 `실데이터 파일 사용 중`이 표시됩니다.
+
+기본 생성 주기는 주간입니다. 주간 데이터는 각 주의 마지막 거래일을 대표 날짜로 사용하며, 날짜는 `YYYY-MM-DD` 형식으로 저장됩니다. 월간 데이터는 `YYYY-MM` 형식으로 저장됩니다. 주간 데이터는 월간 데이터보다 시점이 촘촘해 버블 이동이 더 부드럽게 보입니다.
 
 원천 데이터는 `pykrx`의 KRX/Naver 기반 OHLCV 조회를 사용합니다. 반복 실행으로 원천에 부담을 주지 않도록 원시 종목 데이터는 `data/cache/market/` 아래에 캐시됩니다. `--sleep` 옵션으로 요청 간 대기 시간을 조정할 수 있고, `--limit-tickers`와 `--sectors`로 작은 범위부터 확인하는 것을 권장합니다.
 

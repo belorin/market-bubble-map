@@ -86,7 +86,7 @@ function App() {
           </p>
         </div>
         <div className="date-card">
-          <span>선택 날짜</span>
+          <span>현재 선택된 날짜</span>
           <strong>{currentDate ?? '로딩 중'}</strong>
         </div>
       </header>

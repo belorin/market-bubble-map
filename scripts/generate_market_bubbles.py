@@ -47,10 +47,9 @@ class StockMapRow:
 
 
 @dataclass(frozen=True)
-class MonthPoint:
-    month: str
+class TimePoint:
+    label: str
     close: float
-    volume: float
     trading_value: float
     market_cap: float
 
@@ -82,12 +81,24 @@ def month_range(start: date, end: date) -> list[date]:
     return months
 
 
+def week_labels_between(start: date, end: date) -> set[str]:
+    pd = get_pandas()
+    labels: set[str] = set()
+    for week_end in pd.date_range(start=start, end=end, freq="W-SUN"):
+        labels.add(str(week_end.to_period("W-SUN")))
+    return labels
+
+
 def yyyymmdd(value: date) -> str:
     return value.strftime("%Y%m%d")
 
 
 def month_label(value: date) -> str:
     return value.strftime("%Y-%m")
+
+
+def day_label(value: Any) -> str:
+    return value.strftime("%Y-%m-%d")
 
 
 def read_stock_map(path: Path, sectors: set[str] | None, limit: int | None) -> list[StockMapRow]:
@@ -165,6 +176,7 @@ def fetch_ticker_ohlcv(
     cache_dir: Path,
     sleep_seconds: float,
 ) -> pd.DataFrame:
+    pd = get_pandas()
     cache_file = cache_path(cache_dir, ticker, start, end)
     if cache_file.exists():
         print(f"캐시 사용: {ticker}")
@@ -189,12 +201,16 @@ def fetch_ticker_ohlcv(
     return frame
 
 
-def row_for_month(frame: pd.DataFrame, month: date) -> pd.Series | None:
+def rows_for_month(frame: pd.DataFrame, month: date) -> pd.DataFrame:
     pd = get_pandas()
-    available = frame.loc[
+    return frame.loc[
         (frame.index >= pd.Timestamp(month))
         & (frame.index <= pd.Timestamp(month_end(month)))
     ]
+
+
+def row_for_month(frame: pd.DataFrame, month: date) -> Any | None:
+    available = rows_for_month(frame, month)
     if available.empty:
         return None
     return available.iloc[-1]
@@ -205,26 +221,64 @@ def build_month_point(
     month: date,
     base_market_cap: int,
     first_close: float,
-) -> MonthPoint | None:
+) -> TimePoint | None:
     row = row_for_month(frame, month)
+    rows = rows_for_month(frame, month)
     if row is None:
         return None
 
     close = float(row["close"])
-    volume = float(row["volume"])
-    trading_value = float(row["tradingValue"])
+    trading_value = float(rows["tradingValue"].sum())
     market_cap = base_market_cap * close / first_close
 
-    if not all(math.isfinite(value) for value in [close, volume, trading_value, market_cap]):
+    if not all(math.isfinite(value) for value in [close, trading_value, market_cap]):
         return None
 
-    return MonthPoint(
-        month=month_label(month),
+    return TimePoint(
+        label=month_label(month),
         close=close,
-        volume=volume,
         trading_value=trading_value,
         market_cap=market_cap,
     )
+
+
+def build_week_points(
+    frame: pd.DataFrame,
+    start: date,
+    end: date,
+    base_market_cap: int,
+    first_close: float,
+) -> list[TimePoint]:
+    pd = get_pandas()
+    if frame.empty:
+        return []
+
+    visible = frame.loc[
+        (frame.index >= pd.Timestamp(start)) & (frame.index <= pd.Timestamp(end))
+    ]
+    if visible.empty:
+        return []
+
+    points: list[TimePoint] = []
+    for _, week_rows in visible.groupby(visible.index.to_period("W-SUN")):
+        if week_rows.empty:
+            continue
+        last_row = week_rows.iloc[-1]
+        close = float(last_row["close"])
+        trading_value = float(week_rows["tradingValue"].sum())
+        market_cap = base_market_cap * close / first_close
+        if not all(math.isfinite(value) for value in [close, trading_value, market_cap]):
+            continue
+        points.append(
+            TimePoint(
+                label=day_label(week_rows.index[-1]),
+                close=close,
+                trading_value=trading_value,
+                market_cap=market_cap,
+            )
+        )
+
+    return points
 
 
 def safe_percent_change(current: float, previous: float) -> float | None:
@@ -233,7 +287,14 @@ def safe_percent_change(current: float, previous: float) -> float | None:
     return (current / previous - 1) * 100
 
 
-def build_stock_records(
+def average_trading_value(points: list[TimePoint]) -> float | None:
+    if not points:
+        return None
+    total = sum(point.trading_value for point in points)
+    return total / len(points)
+
+
+def build_monthly_stock_records(
     stock_row: StockMapRow,
     frame: pd.DataFrame,
     months: list[date],
@@ -284,7 +345,73 @@ def build_stock_records(
                 "tradingValue": round(current.trading_value),
                 "return6m": round(return_6m, 1),
                 "tradingValueChange6m": round(trading_change_6m, 1),
+                "_currentTradingValueBasis": current.trading_value,
                 "_previousTradingValue": previous.trading_value,
+            }
+        )
+
+    return records
+
+
+def build_weekly_stock_records(
+    stock_row: StockMapRow,
+    frame: pd.DataFrame,
+    start: date,
+    end: date,
+) -> list[dict[str, Any]]:
+    if frame.empty:
+        return []
+
+    first_close = float(frame.iloc[0]["close"])
+    if first_close <= 0:
+        return []
+
+    points = build_week_points(
+        frame,
+        frame.index.min().date(),
+        end,
+        stock_row.base_market_cap,
+        first_close,
+    )
+    records: list[dict[str, Any]] = []
+
+    for index, current in enumerate(points):
+        if current.label < start.strftime("%Y-%m-%d"):
+            continue
+
+        previous_index = index - 26
+        if previous_index < 0:
+            continue
+
+        previous = points[previous_index]
+        current_avg = average_trading_value(points[max(0, index - 3) : index + 1])
+        previous_avg = average_trading_value(
+            points[max(0, previous_index - 3) : previous_index + 1]
+        )
+
+        if current_avg is None or previous_avg is None:
+            continue
+
+        return_6m = safe_percent_change(current.close, previous.close)
+        trading_change_6m = safe_percent_change(current_avg, previous_avg)
+
+        if return_6m is None or trading_change_6m is None:
+            continue
+
+        records.append(
+            {
+                "date": current.label,
+                "id": stock_row.ticker,
+                "name": stock_row.name,
+                "market": stock_row.market,
+                "sector": stock_row.sector,
+                "level": "stock",
+                "marketCap": round(current.market_cap),
+                "tradingValue": round(current.trading_value),
+                "return6m": round(return_6m, 1),
+                "tradingValueChange6m": round(trading_change_6m, 1),
+                "_currentTradingValueBasis": current_avg,
+                "_previousTradingValue": previous_avg,
             }
         )
 
@@ -300,6 +427,10 @@ def aggregate_sector_records(stock_records: list[dict[str, Any]]) -> list[dict[s
     for (record_date, sector), records in sorted(grouped.items()):
         market_cap = sum(float(record["marketCap"]) for record in records)
         trading_value = sum(float(record["tradingValue"]) for record in records)
+        current_trading_value_basis = sum(
+            float(record.get("_currentTradingValueBasis", record["tradingValue"]))
+            for record in records
+        )
         previous_trading_value = sum(
             float(record.get("_previousTradingValue", 0)) for record in records
         )
@@ -308,7 +439,7 @@ def aggregate_sector_records(stock_records: list[dict[str, Any]]) -> list[dict[s
         weighted_return = weighted_average(records, "return6m", "marketCap")
 
         if previous_trading_value > 0:
-            trading_change = (trading_value / previous_trading_value - 1) * 100
+            trading_change = (current_trading_value_basis / previous_trading_value - 1) * 100
         else:
             trading_change = weighted_average(records, "tradingValueChange6m", "tradingValue")
 
@@ -358,7 +489,7 @@ def sector_slug(sector: str) -> str:
 def validate_record(record: dict[str, Any]) -> bool:
     return (
         isinstance(record.get("date"), str)
-        and re.fullmatch(r"\d{4}-\d{2}", record["date"]) is not None
+        and re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", record["date"]) is not None
         and record.get("level") in {"sector", "stock"}
         and isinstance(record.get("id"), str)
         and bool(record["id"])
@@ -422,6 +553,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--to", dest="to_month", type=parse_month, default=parse_month("2025-06"))
     parser.add_argument("--limit-tickers", type=int, default=None)
     parser.add_argument("--sectors", type=str, default=None, help="쉼표로 구분한 섹터 목록")
+    parser.add_argument(
+        "--frequency",
+        choices=["monthly", "weekly"],
+        default="weekly",
+        help="생성 주기",
+    )
     parser.add_argument("--sleep", type=float, default=0.4)
     parser.add_argument("--stock-map", type=Path, default=DEFAULT_STOCK_MAP)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -434,15 +571,32 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def generate_sample_only(rows: list[StockMapRow], months: list[date]) -> list[dict[str, Any]]:
+def sample_dates(start: date, end: date, frequency: str) -> list[str]:
+    if frequency == "monthly":
+        return [month_label(month) for month in month_range(start, end)]
+
+    dates: list[str] = []
+    cursor = start
+    while cursor <= end:
+        dates.append(cursor.strftime("%Y-%m-%d"))
+        cursor += timedelta(days=7)
+    return dates
+
+
+def generate_sample_only(
+    rows: list[StockMapRow],
+    start: date,
+    end: date,
+    frequency: str,
+) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
-    for month_index, current_month in enumerate(months):
+    for date_index, current_label in enumerate(sample_dates(start, end, frequency)):
         for row_index, stock_row in enumerate(rows):
-            movement = math.sin(month_index / 2.1 + row_index * 0.6)
-            trading_movement = math.cos(month_index / 1.8 + row_index * 0.4)
+            movement = math.sin(date_index / 2.1 + row_index * 0.6)
+            trading_movement = math.cos(date_index / 1.8 + row_index * 0.4)
             records.append(
                 {
-                    "date": month_label(current_month),
+                    "date": current_label,
                     "id": stock_row.ticker,
                     "name": stock_row.name,
                     "market": stock_row.market,
@@ -472,14 +626,18 @@ def main() -> None:
     if not rows:
         raise SystemExit("읽을 종목이 없습니다. CSV, 섹터 필터, 제한 옵션을 확인하세요.")
 
-    months = month_range(args.from_month, args.to_month)
     fetch_start = add_months(args.from_month, -7)
     fetch_end = month_end(args.to_month)
 
     print(f"{len(rows)}개 종목을 읽는 중")
 
     if args.sample_only:
-        stock_records = generate_sample_only(rows, months)
+        stock_records = generate_sample_only(
+            rows,
+            args.from_month,
+            fetch_end,
+            args.frequency,
+        )
     else:
         stock_records = []
         for row in rows:
@@ -494,7 +652,23 @@ def main() -> None:
                 if frame.empty:
                     print(f"빈 데이터로 건너뜀: {row.ticker} {row.name}")
                     continue
-                stock_records.extend(build_stock_records(row, frame, months))
+                if args.frequency == "weekly":
+                    stock_records.extend(
+                        build_weekly_stock_records(
+                            row,
+                            frame,
+                            args.from_month,
+                            fetch_end,
+                        )
+                    )
+                else:
+                    stock_records.extend(
+                        build_monthly_stock_records(
+                            row,
+                            frame,
+                            month_range(args.from_month, args.to_month),
+                        )
+                    )
             except Exception as error:
                 print(f"종목 처리 실패: {row.ticker} {row.name} - {error}", file=sys.stderr)
                 continue
