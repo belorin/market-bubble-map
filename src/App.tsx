@@ -1,28 +1,59 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { BubbleChart } from './components/BubbleChart'
 import { InfoPanel } from './components/InfoPanel'
 import { LeaderBoard } from './components/LeaderBoard'
 import { SectorFilter } from './components/SectorFilter'
 import { TimelineControl } from './components/TimelineControl'
 import {
+  getMarketDataSourceLabel,
+  loadMarketData,
+  type LoadedMarketData,
+} from './data/loadMarketData'
+import {
   getDataForDate,
   getUniqueDates,
-  sampleMarketData,
   sectors,
   type MarketBubbleDatum,
 } from './data/sampleMarketData'
 
 function App() {
-  const dates = useMemo(() => getUniqueDates(sampleMarketData), [])
-  const [selectedDateIndex, setSelectedDateIndex] = useState(dates.length - 1)
+  const [marketDataState, setMarketDataState] =
+    useState<LoadedMarketData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [selectedDateIndex, setSelectedDateIndex] = useState(0)
   const [selectedSector, setSelectedSector] = useState('전체 보기')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+
+    loadMarketData()
+      .then((loadedData) => {
+        if (!active) {
+          return
+        }
+
+        setMarketDataState(loadedData)
+        setSelectedDateIndex(getUniqueDates(loadedData.data).length - 1)
+        setSelectedId(null)
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const marketData = marketDataState?.data ?? []
+  const dates = useMemo(() => getUniqueDates(marketData), [marketData])
   const currentDate = dates[selectedDateIndex]
   const currentData = useMemo(
-    () => getDataForDate(sampleMarketData, currentDate),
-    [currentDate],
-  )
-  const [selectedId, setSelectedId] = useState<string | null>(
-    currentData[0]?.id ?? null,
+    () => (currentDate ? getDataForDate(marketData, currentDate) : []),
+    [currentDate, marketData],
   )
 
   const selectedDatum =
@@ -44,7 +75,7 @@ function App() {
         </div>
         <div className="date-card">
           <span>선택 날짜</span>
-          <strong>{currentDate}</strong>
+          <strong>{currentDate ?? '로딩 중'}</strong>
         </div>
       </header>
 
@@ -53,30 +84,47 @@ function App() {
         프로토타입입니다.
       </section>
 
-      <section className="workbench">
-        <div className="chart-column">
-          <SectorFilter
-            sectors={sectors}
-            selectedSector={selectedSector}
-            onChange={setSelectedSector}
-          />
-          <BubbleChart
-            data={currentData}
-            selectedId={selectedDatum?.id}
-            selectedSector={selectedSector}
-            onSelect={handleSelectDatum}
-          />
-          <TimelineControl
-            dates={dates}
-            selectedIndex={selectedDateIndex}
-            onChange={setSelectedDateIndex}
-          />
-        </div>
-        <aside className="side-column">
-          <InfoPanel datum={selectedDatum} />
-          <LeaderBoard data={currentData} />
-        </aside>
+      <section className="data-status" aria-label="데이터 상태">
+        {loading || !marketDataState ? (
+          <span>데이터를 불러오는 중입니다.</span>
+        ) : (
+          <>
+            <strong>{getMarketDataSourceLabel(marketDataState.source)}</strong>
+            {marketDataState.fallbackNote ? (
+              <span>{marketDataState.fallbackNote}</span>
+            ) : null}
+          </>
+        )}
       </section>
+
+      {loading || !marketDataState ? (
+        <section className="loading-panel">시각화 데이터를 준비하는 중입니다.</section>
+      ) : (
+        <section className="workbench">
+          <div className="chart-column">
+            <SectorFilter
+              sectors={sectors}
+              selectedSector={selectedSector}
+              onChange={setSelectedSector}
+            />
+            <BubbleChart
+              data={currentData}
+              selectedId={selectedDatum?.id}
+              selectedSector={selectedSector}
+              onSelect={handleSelectDatum}
+            />
+            <TimelineControl
+              dates={dates}
+              selectedIndex={selectedDateIndex}
+              onChange={setSelectedDateIndex}
+            />
+          </div>
+          <aside className="side-column">
+            <InfoPanel datum={selectedDatum} />
+            <LeaderBoard data={currentData} />
+          </aside>
+        </section>
+      )}
     </main>
   )
 }

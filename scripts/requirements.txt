@@ -1,0 +1,4 @@
+# Optional future data collection dependencies.
+# The React app and npm build do not require these packages.
+pykrx>=1.0.48
+FinanceDataReader>=0.9.90

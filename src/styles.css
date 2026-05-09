@@ -126,6 +126,34 @@ h1 {
   font-size: 14px;
 }
 
+.data-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(102, 209, 158, 0.18);
+  border-radius: 6px;
+  color: #9fb0c4;
+  background: rgba(13, 42, 40, 0.22);
+  font-size: 13px;
+}
+
+.data-status strong {
+  color: #d8f8e9;
+}
+
+.loading-panel {
+  display: grid;
+  min-height: 380px;
+  place-items: center;
+  border: 1px solid rgba(157, 181, 214, 0.18);
+  border-radius: 8px;
+  color: #b8cbe0;
+  background: rgba(5, 12, 24, 0.72);
+}
+
 .workbench {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
